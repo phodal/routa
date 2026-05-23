@@ -93,6 +93,7 @@
     "db:sqlite:generate": "drizzle-kit generate --config=drizzle-sqlite.config.ts",
     "db:sqlite:migrate": "drizzle-kit migrate --config=drizzle-sqlite.config.ts",
     "db:sqlite:push": "drizzle-kit push --config=drizzle-sqlite.config.ts",
+    "db:sqlite:compact-sessions": "node --import tsx scripts/maintenance/compact-session-history.ts",
     "api:check": "node --import tsx scripts/fitness/check-api-parity.ts",
     "api:check:json": "node --import tsx scripts/fitness/check-api-parity.ts --json",
     "api:check:fix": "node --import tsx scripts/fitness/check-api-parity.ts --fix-hint",
