@@ -62,6 +62,11 @@ import {
 } from "@/core/kanban/task-contract-readiness";
 import { resolveTaskWorktreeTruth } from "@/core/kanban/task-worktree-truth";
 import { stripSpeculativeKanbanTaskAdaptiveSnapshot } from "@/core/kanban/task-adaptive";
+import {
+  evaluateKanbanTransitionGates,
+  formatKanbanTransitionGateMessage,
+  formatKanbanTransitionGateWarning,
+} from "@/core/kanban/transition-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -474,6 +479,25 @@ export async function PATCH(
               { status: 400 },
             );
           }
+        }
+
+        const gateResult = evaluateKanbanTransitionGates(nextTask, targetColumn);
+        if (!gateResult.passed) {
+          const targetColumnName = targetColumn?.name ?? targetColumnId;
+          if (gateResult.blocking) {
+            return NextResponse.json(
+              {
+                error: formatKanbanTransitionGateMessage(gateResult, targetColumnName),
+                transitionGate: gateResult,
+              },
+              { status: 400 },
+            );
+          }
+          nextTask.comments = appendTaskCommentEntry(
+            nextTask.comments,
+            formatKanbanTransitionGateWarning(gateResult, targetColumnName),
+            { source: "update_card", sessionId: existing.triggerSessionId },
+          );
         }
     }
   }

@@ -18,6 +18,7 @@ export type KanbanHistoryMemoryPolicyMode = "off" | "auto" | "force";
 export type KanbanHistoryMemoryPolicyConfidence = "low" | "medium" | "high";
 
 export type KanbanTransport = "acp" | "a2a";
+export type KanbanTransitionGateMode = "blocking" | "warning";
 
 export interface KanbanDeliveryRules {
   /** Require at least one commit ahead of the base branch before transition. */
@@ -113,6 +114,14 @@ export interface KanbanColumnAutomation {
   contractRules?: KanbanContractRules;
   /** Delivery-readiness requirements enforced before transition is allowed */
   deliveryRules?: KanbanDeliveryRules;
+  /** Additional checklist labels that must be checked in task text before transition */
+  requiredChecklist?: string[];
+  /** Require an explicit approved verification verdict before transition */
+  requiredHumanApproval?: boolean;
+  /** Declarative validator command that must be represented in verification evidence */
+  validatorCommand?: string;
+  /** Whether unmet transition gates block movement or leave an audit warning */
+  gateMode?: KanbanTransitionGateMode;
   /** Automatically advance card to next column on agent success */
   autoAdvanceOnSuccess?: boolean;
 }
@@ -212,6 +221,9 @@ export function cloneKanbanColumns(columns: KanbanColumn[]): KanbanColumn[] {
           : undefined,
         deliveryRules: column.automation.deliveryRules
           ? { ...column.automation.deliveryRules }
+          : undefined,
+        requiredChecklist: column.automation.requiredChecklist
+          ? [...column.automation.requiredChecklist]
           : undefined,
         steps: column.automation.steps?.map((step) => ({ ...step })),
       }

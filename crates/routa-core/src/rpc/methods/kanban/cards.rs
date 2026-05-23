@@ -8,8 +8,8 @@ use crate::state::AppState;
 
 use super::automation::{
     ensure_required_artifacts_present, ensure_required_task_fields_present,
-    maybe_apply_lane_automation_defaults, maybe_trigger_lane_automation,
-    resolve_transition_automation_column,
+    ensure_transition_gates_satisfied, maybe_apply_lane_automation_defaults,
+    maybe_trigger_lane_automation, resolve_transition_automation_column,
 };
 use super::shared::{
     default_workspace_id, emit_kanban_workspace_event, ensure_column_exists,
@@ -163,6 +163,9 @@ pub async fn move_card(
     if previous_column_id.as_deref() != Some(params.target_column_id.as_str()) {
         ensure_required_artifacts_present(state, &task.id, &target_column).await?;
         ensure_required_task_fields_present(&task, &target_column)?;
+        if let Some(warning) = ensure_transition_gates_satisfied(&task, &target_column)? {
+            task.comment = Some(append_task_comment(task.comment.as_deref(), &warning));
+        }
     }
 
     task.column_id = Some(params.target_column_id.clone());

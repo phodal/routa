@@ -304,6 +304,15 @@ export interface KanbanColumnAutomationInfo {
     requireCanonicalStory?: boolean;
     loopBreakerThreshold?: number;
   };
+  deliveryRules?: {
+    requireCommittedChanges?: boolean;
+    requireCleanWorktree?: boolean;
+    requirePullRequestReady?: boolean;
+  };
+  requiredChecklist?: string[];
+  requiredHumanApproval?: boolean;
+  validatorCommand?: string;
+  gateMode?: "blocking" | "warning";
   autoAdvanceOnSuccess?: boolean;
 }
 

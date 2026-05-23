@@ -73,6 +73,11 @@ import {
   countContractGateFailures,
   resolveCurrentOrNextContractGate,
 } from "../kanban/task-contract-readiness";
+import {
+  evaluateKanbanTransitionGates,
+  formatKanbanTransitionGateMessage,
+  formatKanbanTransitionGateWarning,
+} from "../kanban/transition-gates";
 import { resolveTaskWorktreeTruth } from "../kanban/task-worktree-truth";
 import { filterBacklogContextSearchSpec } from "../kanban/backlog-context-confirmation";
 
@@ -380,6 +385,18 @@ export class KanbanTools {
         await this.recordTaskMoveBlockComment(task, deliveryError, task.triggerSessionId);
         return errorResult(deliveryError);
       }
+    }
+
+    const gateResult = evaluateKanbanTransitionGates(task, targetColumn);
+    if (!gateResult.passed) {
+      if (gateResult.blocking) {
+        return errorResult(formatKanbanTransitionGateMessage(gateResult, targetColumn.name));
+      }
+      task.comments = appendTaskCommentEntry(
+        task.comments,
+        formatKanbanTransitionGateWarning(gateResult, targetColumn.name),
+        { source: "update_card", sessionId: task.triggerSessionId },
+      );
     }
 
     if (

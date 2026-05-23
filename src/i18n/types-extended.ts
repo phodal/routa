@@ -531,6 +531,17 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     turnComplete: string;
     storyReadinessGate: string;
     storyReadinessGateHint: string;
+    transitionGates: string;
+    transitionGatesHint: string;
+    requiredChecklist: string;
+    requiredChecklistPlaceholder: string;
+    requiredHumanApproval: string;
+    requiredHumanApprovalHint: string;
+    validatorCommand: string;
+    validatorCommandPlaceholder: string;
+    gateMode: string;
+    gateModeBlocking: string;
+    gateModeWarning: string;
     storyReadinessScopeHint: string;
     storyReadinessAcceptanceCriteriaHint: string;
     storyReadinessVerificationPlanHint: string;

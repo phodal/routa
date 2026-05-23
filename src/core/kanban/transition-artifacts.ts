@@ -1,11 +1,16 @@
 import type { ArtifactType } from "../models/artifact";
-import { getNextHappyPathColumnId, type KanbanContractRules, type KanbanDeliveryRules } from "../models/kanban";
+import {
+  getNextHappyPathColumnId,
+  type KanbanColumnAutomation,
+  type KanbanContractRules,
+  type KanbanDeliveryRules,
+} from "../models/kanban";
 
 type ColumnWithArtifacts = {
   id: string;
   name?: string;
   position?: number;
-  automation?: {
+  automation?: Partial<KanbanColumnAutomation> & {
     requiredArtifacts?: ArtifactType[];
     contractRules?: KanbanContractRules;
     deliveryRules?: KanbanDeliveryRules;

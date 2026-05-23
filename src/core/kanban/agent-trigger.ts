@@ -82,6 +82,36 @@ function formatContractRules(rules: KanbanContractRules | undefined): string {
   return "one valid canonical ```yaml``` story contract";
 }
 
+function formatAdditionalTransitionGates(
+  column: { name?: string; automation?: Partial<KanbanColumn["automation"]> } | undefined,
+): string[] {
+  const automation = column?.automation;
+  if (!automation) return [];
+
+  const gates: string[] = [];
+  if ((automation.requiredChecklist?.length ?? 0) > 0) {
+    gates.push(`checked checklist items: ${automation.requiredChecklist!.join(", ")}`);
+  }
+  if (automation.requiredHumanApproval) {
+    gates.push("human approval verdict: APPROVED");
+  }
+  if (automation.validatorCommand?.trim()) {
+    gates.push(`validator evidence for: ${automation.validatorCommand.trim()}`);
+  }
+  if (gates.length === 0) {
+    return [];
+  }
+  const mode = automation.gateMode === "warning" ? "warning" : "blocking";
+  return [
+    "## Transition Gates",
+    "",
+    `Moving this card to ${column?.name ?? "the next column"} has ${mode} gate checks: ${gates.join("; ")}.`,
+    "For checklist gates, write checked markdown items such as `- [x] item name` in the task evidence text.",
+    "For validator gates, include the configured command and a passing result in verification evidence before moving.",
+    "",
+  ];
+}
+
 function uniqueNonEmptyStrings(values: Array<string | undefined>): string[] {
   const seen = new Set<string>();
   const unique: string[] = [];
@@ -363,6 +393,7 @@ export function buildTaskPrompt(
         "",
       ]
     : [];
+  const additionalGateSection = formatAdditionalTransitionGates(transitionArtifacts.nextColumn);
 
   const laneRunHistorySection = !isBacklogPlanning && previousLaneRun
     ? [
@@ -516,6 +547,7 @@ export function buildTaskPrompt(
     ...artifactGateSection,
     ...contractGateSection,
     ...deliveryGateSection,
+    ...additionalGateSection,
     ...evidenceBundleSection,
     ...savedHistoryMemorySection,
     ...strategyMemorySection,
