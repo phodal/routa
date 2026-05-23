@@ -1322,6 +1322,89 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn move_card_blocks_validator_when_command_line_failed() {
+        let state = setup_state().await;
+        let boards = list_boards(
+            &state,
+            ListBoardsParams {
+                workspace_id: "default".to_string(),
+            },
+        )
+        .await
+        .expect("list boards should succeed");
+        let board_id = boards.boards[0].id.clone();
+
+        let mut board = state
+            .kanban_store
+            .get(&board_id)
+            .await
+            .expect("board load should succeed")
+            .expect("default board should exist");
+        let done = board
+            .columns
+            .iter_mut()
+            .find(|column| column.id == "done")
+            .expect("done column should exist");
+        done.automation = Some(KanbanColumnAutomation {
+            enabled: true,
+            required_checklist: Some(vec!["release smoke".to_string()]),
+            required_human_approval: Some(true),
+            validator_command: Some("npm test".to_string()),
+            ..Default::default()
+        });
+        state
+            .kanban_store
+            .update(&board)
+            .await
+            .expect("board update should succeed");
+
+        let created = create_card(
+            &state,
+            CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id),
+                column_id: Some("review".to_string()),
+                title: "Failed validator".to_string(),
+                description: None,
+                priority: None,
+                labels: None,
+            },
+        )
+        .await
+        .expect("create card should succeed");
+        let mut task = state
+            .task_store
+            .get(&created.card.id)
+            .await
+            .expect("task lookup should succeed")
+            .expect("task should exist");
+        task.verification_verdict = Some(VerificationVerdict::Approved);
+        task.verification_commands = Some(vec!["npm test".to_string()]);
+        task.verification_report =
+            Some("- [x] release smoke\n\nnpm test failed\nlint passed".to_string());
+        state
+            .task_store
+            .save(&task)
+            .await
+            .expect("task save should succeed");
+
+        let err = move_card(
+            &state,
+            MoveCardParams {
+                card_id: created.card.id,
+                target_column_id: "done".to_string(),
+                position: None,
+            },
+        )
+        .await
+        .expect_err("transition should be blocked");
+
+        assert!(matches!(err, RpcError::BadRequest(message)
+            if message.contains("missing passing validator evidence for: npm test")
+        ));
+    }
+
+    #[tokio::test]
     async fn delete_column_moves_cards_to_backlog_when_not_deleting_cards() {
         let state = setup_state().await;
         let created = create_card(

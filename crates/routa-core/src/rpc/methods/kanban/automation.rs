@@ -188,10 +188,25 @@ fn validator_evidence_present(task: &Task, command: &str) -> bool {
     )
     .collect::<Vec<_>>()
     .join("\n");
-    evidence.contains(command)
-        && ["pass", "passed", "success", "succeeded", "ok", "green"]
-            .iter()
-            .any(|token| evidence.to_ascii_lowercase().contains(token))
+    let command_lower = command.to_ascii_lowercase();
+    evidence.lines().any(|line| {
+        let line_lower = line.to_ascii_lowercase();
+        line_lower.contains(&command_lower)
+            && !["fail", "failed", "error", "errors", "red"]
+                .iter()
+                .any(|token| {
+                    line_lower
+                        .split(|ch: char| !ch.is_ascii_alphanumeric())
+                        .any(|word| word == *token)
+                })
+            && ["pass", "passed", "success", "succeeded", "ok", "green"]
+                .iter()
+                .any(|token| {
+                    line_lower
+                        .split(|ch: char| !ch.is_ascii_alphanumeric())
+                        .any(|word| word == *token)
+                })
+    })
 }
 
 pub(super) fn ensure_transition_gates_satisfied(
@@ -201,6 +216,9 @@ pub(super) fn ensure_transition_gates_satisfied(
     let Some(automation) = target_column.automation.as_ref() else {
         return Ok(None);
     };
+    if !automation.enabled {
+        return Ok(None);
+    }
 
     let mut issues = Vec::new();
     let required_checklist = automation

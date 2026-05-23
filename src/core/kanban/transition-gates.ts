@@ -65,10 +65,15 @@ function isValidatorEvidencePresent(task: Task, command: string): boolean {
     task.completionSummary,
     ...(task.verificationCommands ?? []),
   ].filter((value): value is string => Boolean(value?.trim())).join("\n");
-  if (!evidenceText.includes(normalizedCommand)) {
-    return false;
-  }
-  return /\b(pass|passed|success|succeeded|ok|green)\b/i.test(evidenceText);
+  const commandLower = normalizedCommand.toLowerCase();
+  return evidenceText
+    .split(/\r?\n/)
+    .some((line) => {
+      const lineLower = line.toLowerCase();
+      return lineLower.includes(commandLower)
+        && !/\b(fail|failed|error|errors|red)\b/i.test(line)
+        && /\b(pass|passed|success|succeeded|ok|green)\b/i.test(line);
+    });
 }
 
 export function evaluateKanbanTransitionGates(
@@ -76,7 +81,15 @@ export function evaluateKanbanTransitionGates(
   targetColumn: Pick<KanbanColumn, "id" | "name" | "automation"> | undefined,
 ): KanbanTransitionGateResult {
   const automation = targetColumn?.automation;
-  const mode = automation?.gateMode === "warning" ? "warning" : "blocking";
+  if (!automation?.enabled) {
+    return {
+      mode: "blocking",
+      passed: true,
+      blocking: false,
+      issues: [],
+    };
+  }
+  const mode = automation.gateMode === "warning" ? "warning" : "blocking";
   const issues: KanbanTransitionGateIssue[] = [];
 
   const requiredChecklist = (automation?.requiredChecklist ?? [])

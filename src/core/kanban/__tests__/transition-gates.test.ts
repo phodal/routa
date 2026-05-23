@@ -56,6 +56,43 @@ describe("evaluateKanbanTransitionGates", () => {
     expect(result.issues).toEqual([]);
   });
 
+  it("does not use unrelated passing text as validator evidence", () => {
+    const result = evaluateKanbanTransitionGates(makeTask({
+      verificationVerdict: VerificationVerdict.APPROVED,
+      verificationCommands: ["npm test"],
+      verificationReport: "- [x] login smoke\n\nnpm test failed\nlint passed",
+    }), {
+      id: "release",
+      name: "Release",
+      automation: {
+        enabled: true,
+        requiredChecklist: ["login smoke"],
+        requiredHumanApproval: true,
+        validatorCommand: "npm test",
+      },
+    });
+
+    expect(result.blocking).toBe(true);
+    expect(result.issues.map((issue) => issue.code)).toEqual(["validator_command"]);
+  });
+
+  it("skips transition gates when automation is disabled", () => {
+    const result = evaluateKanbanTransitionGates(makeTask(), {
+      id: "release",
+      name: "Release",
+      automation: {
+        enabled: false,
+        requiredChecklist: ["login smoke"],
+        requiredHumanApproval: true,
+        validatorCommand: "npm test",
+      },
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.blocking).toBe(false);
+    expect(result.issues).toEqual([]);
+  });
+
   it("returns non-blocking issues in warning mode", () => {
     const result = evaluateKanbanTransitionGates(makeTask(), {
       id: "qa",
