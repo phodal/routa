@@ -88,6 +88,47 @@ describe("compact-tool-call-param-deltas", () => {
       batchSize: 1,
     })).toThrow();
   });
+
+  it("compacts every matching row across multiple rowid pages", () => {
+    const db = new BetterSqlite3(dbPath);
+    try {
+      const insert = db.prepare(`
+        INSERT INTO session_messages (id, session_id, message_index, event_type, payload)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      insert.run("event-2", "session-1", 1, "tool_call_params_delta", JSON.stringify(createToolDeltaNotification("event-2")));
+      insert.run("event-3", "session-1", 2, "tool_call_params_delta", JSON.stringify(createToolDeltaNotification("event-3")));
+    } finally {
+      db.close();
+    }
+
+    const result = compactToolCallDeltaDatabase({
+      dbPath,
+      apply: true,
+      vacuum: false,
+      batchSize: 1,
+    });
+
+    expect(result.sessionMessages).toMatchObject({ scanned: 3, changed: 3 });
+    const readonly = new BetterSqlite3(dbPath, { readonly: true });
+    try {
+      const rows = readonly
+        .prepare("SELECT payload FROM session_messages WHERE event_type = 'tool_call_params_delta' ORDER BY id")
+        .all() as Array<{ payload: string }>;
+      expect(rows).toHaveLength(3);
+      for (const row of rows) {
+        const update = (JSON.parse(row.payload) as NotificationRecord).update ?? {};
+        expect(update).toMatchObject({
+          sessionUpdate: "tool_call_params_delta",
+          compacted: true,
+        });
+        expect(update).not.toHaveProperty("accumulatedJson");
+        expect(update).not.toHaveProperty("parsedInput");
+      }
+    } finally {
+      readonly.close();
+    }
+  });
 });
 
 function seedDatabase(targetPath: string): void {
@@ -108,16 +149,7 @@ function seedDatabase(targetPath: string): void {
       );
     `);
 
-    const notification = {
-      sessionId: "session-1",
-      eventId: "event-1",
-      update: {
-        sessionUpdate: "tool_call_params_delta",
-        partialJson: "x".repeat(700),
-        accumulatedJson: JSON.stringify({ content: "y".repeat(2_000) }),
-        parsedInput: { title: "Large card", body: "z".repeat(1_000) },
-      },
-    };
+    const notification = createToolDeltaNotification("event-1");
 
     db.prepare("INSERT INTO acp_sessions (id, message_history) VALUES (?, ?)").run(
       "session-1",
@@ -130,6 +162,23 @@ function seedDatabase(targetPath: string): void {
   } finally {
     db.close();
   }
+}
+
+function createToolDeltaNotification(eventId: string): {
+  sessionId: string;
+  eventId: string;
+  update: Record<string, unknown>;
+} {
+  return {
+    sessionId: "session-1",
+    eventId,
+    update: {
+      sessionUpdate: "tool_call_params_delta",
+      partialJson: "x".repeat(700),
+      accumulatedJson: JSON.stringify({ content: "y".repeat(2_000) }),
+      parsedInput: { title: "Large card", body: "z".repeat(1_000) },
+    },
+  };
 }
 
 function readPayloads(targetPath: string): {
