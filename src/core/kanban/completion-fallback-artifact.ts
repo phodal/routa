@@ -49,7 +49,7 @@ function isFallbackEligible(task: Task, stage: KanbanColumnStage): boolean {
 
 function containsSensitiveText(text: string): boolean {
   return [
-    /\b(password|passwd|api[_-]?key|secret|token|cookie|authorization)\b\s*[:=]/i,
+    /["']?(password|passwd|api[_-]?key|secret|token|cookie|authorization)["']?\s*[:=]\s*["']?[^\s"']+/i,
     /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/,
     /\bgh[pousr]_[A-Za-z0-9_]{20,}/,
     /\bsk-[A-Za-z0-9_-]{20,}/,
@@ -106,12 +106,15 @@ export async function ensureCompletionFallbackArtifact(
   }
 
   const sensitiveBlocked = containsSensitiveText(rawText);
-  const { content, truncated } = sensitiveBlocked
-    ? {
-        content: "Session final response fallback was not stored because it appears to contain sensitive content.",
-        truncated: false,
-      }
-    : truncateContent(rawText);
+  if (sensitiveBlocked) {
+    return {
+      status: "blocked",
+      reason: "sensitive_content_blocked",
+      artifactId,
+    };
+  }
+
+  const { content, truncated } = truncateContent(rawText);
 
   const contentHash = createHash("sha256").update(rawText).digest("hex");
   const artifact = createArtifact({
@@ -133,7 +136,7 @@ export async function ensureCompletionFallbackArtifact(
       transport: params.transport ?? "acp",
       contentHash,
       truncated: String(truncated),
-      sensitiveBlocked: String(sensitiveBlocked),
+      sensitiveBlocked: "false",
     },
   });
 

@@ -106,7 +106,7 @@ describe("ensureCompletionFallbackArtifact", () => {
     expect(await artifactStore.listByTask(task.id)).toHaveLength(1);
   });
 
-  it("stores only a blocking note when the final response appears sensitive", async () => {
+  it("does not store a fallback artifact when the final response appears sensitive", async () => {
     const artifactStore = new InMemoryArtifactStore();
     const task = createTask({
       id: "task-fallback-sensitive",
@@ -122,18 +122,13 @@ describe("ensureCompletionFallbackArtifact", () => {
       workspaceId: "default",
       stage: "review",
       artifactStore,
-      finalResponseText: "password=super-secret",
+      finalResponseText: "{\"password\":\"super-secret\"}",
     });
 
     expect(result).toMatchObject({
       status: "blocked",
       reason: "sensitive_content_blocked",
     });
-    const [artifact] = await artifactStore.listByTask(task.id);
-    expect(artifact.content).toContain("appears to contain sensitive content");
-    expect(artifact.content).not.toContain("super-secret");
-    expect(artifact.metadata).toMatchObject({
-      sensitiveBlocked: "true",
-    });
+    expect(await artifactStore.listByTask(task.id)).toHaveLength(0);
   });
 });

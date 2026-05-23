@@ -277,7 +277,10 @@ describe("executeMcpTool", () => {
     ).toBe(true);
     expect(
       getMcpToolDefinitions("full", "kanban-planning").some((tool) => tool.name === "capture_screenshot"),
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      getMcpToolDefinitions("full", "kanban-planning").some((tool) => tool.name === "create_note"),
+    ).toBe(true);
 
     const loadFeatureTreeTool = getMcpToolDefinitions("essential", "kanban-planning")
       .find((tool) => tool.name === "load_feature_tree_context");

@@ -356,6 +356,8 @@ pub(super) async fn execute(
             "tasks.getArtifact",
             serde_json::json!({
                 "artifactId": args.get("artifactId").and_then(|v| v.as_str()).unwrap_or(""),
+                "taskId": args.get("taskId").and_then(|v| v.as_str()).unwrap_or(""),
+                "workspaceId": args.get("workspaceId").and_then(|v| v.as_str()).unwrap_or(""),
             }),
         )
         .await
