@@ -277,6 +277,90 @@ describe("executeMcpTool", () => {
       .toBe("integer");
   });
 
+  it("hides protected update_task workflow fields for kanban-planning", () => {
+    const updateTaskTool = getMcpToolDefinitions("full", "kanban-planning")
+      .find((tool) => tool.name === "update_task");
+    const properties = updateTaskTool?.inputSchema?.properties as Record<string, unknown> | undefined;
+
+    expect(properties).toBeDefined();
+    expect(properties).toHaveProperty("scope");
+    expect(properties).toHaveProperty("acceptanceCriteria");
+    expect(properties).not.toHaveProperty("status");
+    expect(properties).not.toHaveProperty("completionSummary");
+    expect(properties).not.toHaveProperty("verificationVerdict");
+    expect(properties).not.toHaveProperty("assignedTo");
+  });
+
+  it("blocks kanban-planning update_task calls that try to write workflow metadata", async () => {
+    const tools = {
+      updateTask: vi.fn(async () => ({
+        success: true,
+        data: { taskId: "task-1" },
+      })),
+    } as never;
+
+    const result = await executeMcpTool(
+      tools,
+      "update_task",
+      {
+        workspaceId: "workspace-1",
+        taskId: "task-1",
+        status: "COMPLETED",
+        verificationVerdict: "APPROVED",
+      },
+      undefined,
+      undefined,
+      undefined,
+      "kanban-planning",
+    );
+
+    expect((tools as { updateTask: ReturnType<typeof vi.fn> }).updateTask).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ isError: true });
+    expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
+      "protected task workflow fields",
+    );
+  });
+
+  it("allows kanban-planning update_task calls for story-readiness fields", async () => {
+    const tools = {
+      updateTask: vi.fn(async (params) => ({
+        success: true,
+        data: { taskId: params.taskId, updatedFields: Object.keys(params.updates) },
+      })),
+    } as never;
+
+    const result = await executeMcpTool(
+      tools,
+      "update_task",
+      {
+        workspaceId: "workspace-1",
+        taskId: "task-1",
+        scope: "Clarify the story boundary",
+        acceptanceCriteria: ["Story fields are complete"],
+        verificationCommands: ["npm run test -- kanban"],
+        testCases: ["Move gate can read structured fields"],
+      },
+      undefined,
+      undefined,
+      undefined,
+      "kanban-planning",
+    );
+
+    expect((tools as { updateTask: ReturnType<typeof vi.fn> }).updateTask).toHaveBeenCalledWith({
+      taskId: "task-1",
+      expectedVersion: undefined,
+      agentId: "system",
+      sessionId: undefined,
+      updates: expect.objectContaining({
+        scope: "Clarify the story boundary",
+        acceptanceCriteria: ["Story fields are complete"],
+        verificationCommands: ["npm run test -- kanban"],
+        testCases: ["Move gate can read structured fields"],
+      }),
+    });
+    expect(result).toMatchObject({ isError: false });
+  });
+
   it("loads prompt-ready feature tree context from MCP args", async () => {
     const result = await executeMcpTool(
       {} as never,

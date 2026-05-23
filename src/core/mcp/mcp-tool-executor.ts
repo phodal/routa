@@ -19,6 +19,10 @@ import {
 import { readFeatureTreeSpecResource } from "@/core/spec/feature-tree-spec-resource-contract";
 import { ToolMode } from "./routa-mcp-tool-manager";
 import { getMcpProfileToolAllowlist, type McpServerProfile } from "./mcp-server-profiles";
+import {
+  blockedUpdateTaskFieldsForProfile,
+  updateTaskBoundaryError,
+} from "./mcp-task-write-boundary";
 import { parseTaskJitContextAnalysis } from "../models/task";
 import {
   CONFIRM_FEATURE_TREE_STORY_CONTEXT_DESCRIPTION,
@@ -172,6 +176,45 @@ const ESSENTIAL_TOOL_NAMES = new Set([
   CONFIRM_FEATURE_TREE_STORY_CONTEXT_TOOL_NAME,
 ]);
 
+function buildUpdateTaskToolDefinition(mcpProfile?: McpServerProfile) {
+  const baseProperties = {
+    taskId: { type: "string", description: "Task ID" },
+    expectedVersion: { type: "number", description: "Expected version for optimistic locking" },
+    agentId: { type: "string", description: "Agent performing the update (optional in Kanban sessions)" },
+    title: { type: "string" },
+    objective: { type: "string" },
+    scope: { type: "string" },
+    acceptanceCriteria: { type: "array", items: { type: "string" } },
+    verificationCommands: { type: "array", items: { type: "string" } },
+    testCases: { type: "array", items: { type: "string" } },
+    contextSearchSpec: TASK_CONTEXT_SEARCH_SPEC_SCHEMA,
+    jitContextAnalysis: TASK_JIT_CONTEXT_ANALYSIS_SCHEMA,
+  };
+
+  const properties = mcpProfile === "kanban-planning"
+    ? baseProperties
+    : {
+        ...baseProperties,
+        status: { type: "string" },
+        completionSummary: { type: "string" },
+        verificationVerdict: { type: "string", enum: ["APPROVED", "NOT_APPROVED", "BLOCKED"] },
+        verificationReport: { type: "string" },
+        assignedTo: { type: "string" },
+      };
+
+  return {
+    name: "update_task",
+    description: mcpProfile === "kanban-planning"
+      ? "Update story-readiness task fields. This profile cannot change status, lane, dependencies, completion, verification verdict, or assignment metadata; use move_card and gate-specific tools for workflow transitions."
+      : "Atomically update structured task fields with optimistic locking. Use this for story-readiness fields such as scope, acceptance criteria, verification commands, and test cases. agentId is optional for Kanban sessions. In backlog planning, only persist contextSearchSpec after repo inspection or feature-tree lookup confirms the feature/files.",
+    inputSchema: {
+      type: "object",
+      properties,
+      required: ["taskId"],
+    },
+  };
+}
+
 export async function executeMcpTool(
   tools: AgentTools,
   name: string,
@@ -179,6 +222,7 @@ export async function executeMcpTool(
   noteTools?: NoteTools,
   workspaceTools?: WorkspaceTools,
   kanbanTools?: KanbanTools,
+  mcpProfile?: McpServerProfile,
 ) {
   // ── Tools that don't require workspaceId ─────────────────────────────
   // ── Tools that don't require workspaceId ─────────────────────────────
@@ -298,6 +342,15 @@ export async function executeMcpTool(
         })
       );
     case "update_task":
+      {
+        const blockedFields = blockedUpdateTaskFieldsForProfile(args, mcpProfile);
+        if (blockedFields.length > 0 && mcpProfile) {
+          return formatResult({
+            success: false,
+            error: updateTaskBoundaryError(blockedFields, mcpProfile),
+          });
+        }
+      }
       return formatResult(
         await tools.updateTask({
           taskId: args.taskId as string,
@@ -1111,32 +1164,7 @@ export function getMcpToolDefinitions(
         required: ["taskId", "status", "agentId"],
       },
     },
-    {
-      name: "update_task",
-      description: "Atomically update structured task fields with optimistic locking. Use this for story-readiness fields such as scope, acceptance criteria, verification commands, and test cases. agentId is optional for Kanban sessions. In backlog planning, only persist contextSearchSpec after repo inspection or feature-tree lookup confirms the feature/files.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          taskId: { type: "string", description: "Task ID" },
-          expectedVersion: { type: "number", description: "Expected version for optimistic locking" },
-          agentId: { type: "string", description: "Agent performing the update (optional in Kanban sessions)" },
-          title: { type: "string" },
-          objective: { type: "string" },
-          scope: { type: "string" },
-          status: { type: "string" },
-          completionSummary: { type: "string" },
-          verificationVerdict: { type: "string", enum: ["APPROVED", "NOT_APPROVED", "BLOCKED"] },
-          verificationReport: { type: "string" },
-          assignedTo: { type: "string" },
-          acceptanceCriteria: { type: "array", items: { type: "string" } },
-          verificationCommands: { type: "array", items: { type: "string" } },
-          testCases: { type: "array", items: { type: "string" } },
-          contextSearchSpec: TASK_CONTEXT_SEARCH_SPEC_SCHEMA,
-          jitContextAnalysis: TASK_JIT_CONTEXT_ANALYSIS_SCHEMA,
-        },
-        required: ["taskId"],
-      },
-    },
+    buildUpdateTaskToolDefinition(mcpProfile),
     {
       name: "save_history_memory_context",
       description: "Persist the minimal task-adaptive history memory result for a task so later sessions can load it directly.",

@@ -7,6 +7,7 @@ pub(super) async fn execute(
     name: &str,
     args: &serde_json::Value,
     workspace_id: &str,
+    mcp_profile: Option<&str>,
 ) -> Option<serde_json::Value> {
     let result = match name {
         "list_agents" => match state.agent_store.list_by_workspace(workspace_id).await {
@@ -208,6 +209,19 @@ pub(super) async fn execute(
             }
         }
         "update_task" => {
+            let blocked_fields =
+                super::super::tool_catalog::protected_update_task_fields_for_profile(
+                    args,
+                    mcp_profile,
+                );
+            if !blocked_fields.is_empty() {
+                return Some(tool_result_error(&format!(
+                    "{} cannot write protected task workflow fields via update_task: {}. Use move_card for lane/status changes, provide artifacts for evidence, and leave owner/review metadata to the appropriate gate.",
+                    mcp_profile.unwrap_or("MCP profile"),
+                    blocked_fields.join(", ")
+                )));
+            }
+
             let task_id = args.get("taskId").and_then(|v| v.as_str()).unwrap_or("");
             let agent_id = args
                 .get("agentId")

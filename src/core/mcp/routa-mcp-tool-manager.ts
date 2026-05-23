@@ -42,6 +42,11 @@ import {
   registerSummarizeFileSessionContextTool,
   registerSummarizeTaskHistoryContextTool,
 } from "./task-adaptive-mcp-tools";
+import type { McpServerProfile } from "./mcp-server-profiles";
+import {
+  blockedUpdateTaskFieldsForProfile,
+  updateTaskBoundaryError,
+} from "./mcp-task-write-boundary";
 
 /**
  * Tool registration mode for MCP server.
@@ -96,6 +101,7 @@ export class RoutaMcpToolManager {
   private toolMode: ToolMode = "essential";
   private allowedTools?: ReadonlySet<string>;
   private sessionId?: string;
+  private mcpProfile?: McpServerProfile;
 
   constructor(
     private tools: AgentTools,
@@ -120,6 +126,10 @@ export class RoutaMcpToolManager {
 
   setAllowedTools(allowedTools?: ReadonlySet<string>): void {
     this.allowedTools = allowedTools;
+  }
+
+  setMcpProfile(profile?: McpServerProfile): void {
+    this.mcpProfile = profile;
   }
 
   /**
@@ -357,28 +367,42 @@ export class RoutaMcpToolManager {
   }
 
   private registerUpdateTask(server: McpServer) {
+    const protectedWorkflowFields = {
+      status: z.string().optional().describe("Update the task status"),
+      completionSummary: z.string().optional().describe("Set completion summary"),
+      verificationVerdict: z.enum(["APPROVED", "NOT_APPROVED", "BLOCKED"]).optional().describe("Set verification verdict"),
+      verificationReport: z.string().optional().describe("Set verification report"),
+      assignedTo: z.string().optional().describe("Assign to agent ID"),
+    };
+    const inputSchema = {
+      taskId: z.string().describe("ID of the task to update"),
+      expectedVersion: z.number().optional().describe("Expected version for optimistic locking (from prior task read)"),
+      agentId: z.string().optional().describe("ID of the agent performing the update (optional in Kanban sessions)"),
+      title: z.string().optional().describe("Update the task title"),
+      objective: z.string().optional().describe("Update the task objective"),
+      scope: z.string().optional().describe("Update the task scope"),
+      acceptanceCriteria: z.array(z.string()).optional().describe("Update acceptance criteria"),
+      verificationCommands: z.array(z.string()).optional().describe("Update verification commands"),
+      testCases: z.array(z.string()).optional().describe("Update test cases"),
+      contextSearchSpec: taskContextSearchSpecSchema.optional().describe("Confirmed retrieval hints for JIT Context and history search. In backlog planning, only persist this after repo inspection or load_feature_tree_context confirms the feature/files."),
+      jitContextAnalysis: taskJitContextAnalysisSchema.nullable().optional().describe("Structured JIT/history analysis to persist on the task for later reuse."),
+      ...(this.mcpProfile === "kanban-planning" ? {} : protectedWorkflowFields),
+    };
+
     server.tool(
       "update_task",
-      "Atomically update structured task fields with optimistic locking. Use this for story-readiness fields such as scope, acceptance criteria, verification commands, and test cases. agentId is optional for Kanban sessions.",
-      {
-        taskId: z.string().describe("ID of the task to update"),
-        expectedVersion: z.number().optional().describe("Expected version for optimistic locking (from prior task read)"),
-        agentId: z.string().optional().describe("ID of the agent performing the update (optional in Kanban sessions)"),
-        title: z.string().optional().describe("Update the task title"),
-        objective: z.string().optional().describe("Update the task objective"),
-        scope: z.string().optional().describe("Update the task scope"),
-        status: z.string().optional().describe("Update the task status"),
-        completionSummary: z.string().optional().describe("Set completion summary"),
-        verificationVerdict: z.enum(["APPROVED", "NOT_APPROVED", "BLOCKED"]).optional().describe("Set verification verdict"),
-        verificationReport: z.string().optional().describe("Set verification report"),
-        assignedTo: z.string().optional().describe("Assign to agent ID"),
-        acceptanceCriteria: z.array(z.string()).optional().describe("Update acceptance criteria"),
-        verificationCommands: z.array(z.string()).optional().describe("Update verification commands"),
-        testCases: z.array(z.string()).optional().describe("Update test cases"),
-        contextSearchSpec: taskContextSearchSpecSchema.optional().describe("Confirmed retrieval hints for JIT Context and history search. In backlog planning, only persist this after repo inspection or load_feature_tree_context confirms the feature/files."),
-        jitContextAnalysis: taskJitContextAnalysisSchema.nullable().optional().describe("Structured JIT/history analysis to persist on the task for later reuse."),
-      },
+      this.mcpProfile === "kanban-planning"
+        ? "Update story-readiness task fields. This profile cannot change status, lane, dependencies, completion, verification verdict, or assignment metadata; use move_card and gate-specific tools for workflow transitions."
+        : "Atomically update structured task fields with optimistic locking. Use this for story-readiness fields such as scope, acceptance criteria, verification commands, and test cases. agentId is optional for Kanban sessions.",
+      inputSchema,
       async (params) => {
+        const blockedFields = blockedUpdateTaskFieldsForProfile(params, this.mcpProfile);
+        if (blockedFields.length > 0 && this.mcpProfile) {
+          return this.toMcpResult({
+            success: false,
+            error: updateTaskBoundaryError(blockedFields, this.mcpProfile),
+          });
+        }
         const { taskId, expectedVersion, agentId, ...updates } = params;
         const result = await this.tools.updateTask({
           taskId,
