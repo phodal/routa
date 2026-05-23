@@ -11,20 +11,35 @@ pub(super) async fn execute_tool_public(
     name: &str,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    execute_tool(state, normalize_tool_name(name), args).await
+    execute_tool(state, normalize_tool_name(name), args, None).await
+}
+
+pub(super) async fn execute_tool_for_profile_public(
+    state: &AppState,
+    name: &str,
+    args: &serde_json::Value,
+    mcp_profile: Option<&str>,
+) -> serde_json::Value {
+    execute_tool(state, normalize_tool_name(name), args, mcp_profile).await
 }
 
 pub(super) fn normalize_tool_name_public(name: &str) -> &str {
     normalize_tool_name(name)
 }
 
-async fn execute_tool(state: &AppState, name: &str, args: &serde_json::Value) -> serde_json::Value {
+async fn execute_tool(
+    state: &AppState,
+    name: &str,
+    args: &serde_json::Value,
+    mcp_profile: Option<&str>,
+) -> serde_json::Value {
     let workspace_id = args
         .get("workspaceId")
         .and_then(|v| v.as_str())
         .unwrap_or("default");
 
-    if let Some(result) = agents_tasks::execute(state, name, args, workspace_id).await {
+    if let Some(result) = agents_tasks::execute(state, name, args, workspace_id, mcp_profile).await
+    {
         return result;
     }
     if let Some(result) = delegation::execute(state, name, args, workspace_id).await {

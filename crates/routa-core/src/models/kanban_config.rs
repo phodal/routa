@@ -4,6 +4,7 @@ use super::kanban::KanbanColumnAutomation;
 
 const VALID_STAGES: &[&str] = &["backlog", "todo", "dev", "review", "blocked", "done"];
 const VALID_TRANSITION_TYPES: &[&str] = &["entry", "exit", "both"];
+const VALID_GATE_MODES: &[&str] = &["blocking", "warning"];
 const VALID_ARTIFACTS: &[&str] = &["screenshot", "test_results", "code_diff"];
 const VALID_REQUIRED_TASK_FIELDS: &[&str] = &[
     "scope",
@@ -134,6 +135,18 @@ impl KanbanConfig {
                             ));
                         }
                     }
+                    if let Some(mode) = &auto.gate_mode {
+                        let mode = match mode {
+                            super::kanban::KanbanTransitionGateMode::Blocking => "blocking",
+                            super::kanban::KanbanTransitionGateMode::Warning => "warning",
+                        };
+                        if !VALID_GATE_MODES.contains(&mode) {
+                            errors.push(format!(
+                                "{auto_prefix}.gateMode '{mode}' is invalid, expected one of: {}",
+                                VALID_GATE_MODES.join(", ")
+                            ));
+                        }
+                    }
                     if let Some(artifacts) = &auto.required_artifacts {
                         for art in artifacts {
                             if !VALID_ARTIFACTS.contains(&art.as_str()) {
@@ -154,6 +167,20 @@ impl KanbanConfig {
                                     VALID_REQUIRED_TASK_FIELDS.join(", ")
                                 ));
                             }
+                        }
+                    }
+                    if let Some(checklist) = &auto.required_checklist {
+                        for item in checklist {
+                            if item.trim().is_empty() {
+                                errors.push(format!(
+                                    "{auto_prefix}.requiredChecklist contains a blank item"
+                                ));
+                            }
+                        }
+                    }
+                    if let Some(command) = &auto.validator_command {
+                        if command.trim().is_empty() {
+                            errors.push(format!("{auto_prefix}.validatorCommand is blank"));
                         }
                     }
                 }
@@ -222,6 +249,11 @@ boards:
           requiredTaskFields:
             - scope
             - verification_plan
+          requiredChecklist:
+            - browser smoke
+          requiredHumanApproval: true
+          validatorCommand: npm test
+          gateMode: warning
           autoAdvanceOnSuccess: false
 "#;
         let config = KanbanConfig::from_yaml(yaml).unwrap();
@@ -231,6 +263,16 @@ boards:
         assert_eq!(auto.provider_id.as_deref(), Some("routa-native"));
         assert_eq!(auto.required_artifacts.as_ref().unwrap().len(), 2);
         assert_eq!(auto.required_task_fields.as_ref().unwrap().len(), 2);
+        assert_eq!(
+            auto.required_checklist.as_ref().unwrap(),
+            &vec!["browser smoke".to_string()]
+        );
+        assert_eq!(auto.required_human_approval, Some(true));
+        assert_eq!(auto.validator_command.as_deref(), Some("npm test"));
+        assert_eq!(
+            auto.gate_mode,
+            Some(super::super::kanban::KanbanTransitionGateMode::Warning)
+        );
         assert!(config.validate().is_ok());
     }
 

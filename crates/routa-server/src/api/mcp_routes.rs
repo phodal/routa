@@ -125,6 +125,15 @@ pub async fn execute_tool_public(
     tool_executor::execute_tool_public(state, name, args).await
 }
 
+pub(super) async fn execute_tool_for_profile_public(
+    state: &AppState,
+    name: &str,
+    args: &serde_json::Value,
+    mcp_profile: Option<&str>,
+) -> serde_json::Value {
+    tool_executor::execute_tool_for_profile_public(state, name, args, mcp_profile).await
+}
+
 pub fn normalize_tool_name_public(name: &str) -> &str {
     tool_executor::normalize_tool_name_public(name)
 }

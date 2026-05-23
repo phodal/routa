@@ -12,6 +12,7 @@ pub(super) fn build_tool_list_for_profile(profile: Option<&str>) -> Vec<serde_js
                     .and_then(|value| value.as_str())
                     .is_some_and(|name| tool_allowed_for_profile(name, Some("kanban-planning")))
             })
+            .map(|tool| restrict_tool_for_profile(tool, Some("kanban-planning")))
             .collect(),
         _ => tools,
     }
@@ -28,11 +29,95 @@ pub(super) fn tool_allowed_for_profile(name: &str, profile: Option<&str>) -> boo
                 | "update_task"
                 | "update_card"
                 | "move_card"
+                | "create_note"
+                | "provide_artifact"
+                | "list_artifacts"
+                | "get_artifact"
+                | "capture_screenshot"
                 | "request_previous_lane_handoff"
                 | "submit_lane_handoff"
         ),
         _ => true,
     }
+}
+
+pub(super) fn protected_update_task_fields_for_profile(
+    args: &serde_json::Value,
+    profile: Option<&str>,
+) -> Vec<String> {
+    if profile != Some("kanban-planning") {
+        return Vec::new();
+    }
+
+    let Some(object) = args.as_object() else {
+        return Vec::new();
+    };
+
+    object
+        .keys()
+        .filter(|key| {
+            matches!(
+                key.as_str(),
+                "status"
+                    | "columnId"
+                    | "column_id"
+                    | "dependencies"
+                    | "completionSummary"
+                    | "verificationVerdict"
+                    | "verificationReport"
+                    | "assignedTo"
+                    | "assignedProvider"
+                    | "assignedRole"
+                    | "assignedSpecialistId"
+                    | "releaseLabel"
+                    | "approval"
+                    | "ownerVerdict"
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+fn restrict_tool_for_profile(
+    mut tool: serde_json::Value,
+    profile: Option<&str>,
+) -> serde_json::Value {
+    if profile != Some("kanban-planning")
+        || tool.get("name").and_then(|value| value.as_str()) != Some("update_task")
+    {
+        return tool;
+    }
+
+    tool["description"] = serde_json::json!("Update story-readiness task fields. This profile cannot change status, lane, dependencies, completion, verification verdict, or assignment metadata; use move_card and gate-specific tools for workflow transitions.");
+
+    let Some(properties) = tool
+        .get_mut("inputSchema")
+        .and_then(|schema| schema.get_mut("properties"))
+        .and_then(|properties| properties.as_object_mut())
+    else {
+        return tool;
+    };
+
+    for field in [
+        "status",
+        "columnId",
+        "column_id",
+        "dependencies",
+        "completionSummary",
+        "verificationVerdict",
+        "verificationReport",
+        "assignedTo",
+        "assignedProvider",
+        "assignedRole",
+        "assignedSpecialistId",
+        "releaseLabel",
+        "approval",
+        "ownerVerdict",
+    ] {
+        properties.remove(field);
+    }
+
+    tool
 }
 
 fn build_tool_list_inner() -> Vec<serde_json::Value> {
@@ -151,6 +236,15 @@ fn build_tool_list_inner() -> Vec<serde_json::Value> {
                 "type": { "type": "string", "enum": ["screenshot", "test_results", "code_diff", "logs"], "description": "Artifact type filter" }
             },
             "required": ["taskId"]
+        })),
+        tool_def("get_artifact", "Read a single task artifact by ID.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "artifactId": { "type": "string", "description": "Artifact ID" },
+                "taskId": { "type": "string", "description": "Task ID the artifact belongs to" },
+                "workspaceId": { "type": "string", "description": "Workspace ID the artifact belongs to" }
+            },
+            "required": ["artifactId", "taskId", "workspaceId"]
         })),
         // ── Delegation tools ─────────────────────────────────────────────
         tool_def("delegate_task_to_agent", "Delegate a task to a new agent by spawning a real process. Use specialist='CRAFTER' for implementation, specialist='GATE' for verification, specialist='DEVELOPER' for solo plan+implement.", serde_json::json!({
@@ -468,6 +562,11 @@ mod tests {
             "update_task",
             "update_card",
             "move_card",
+            "create_note",
+            "provide_artifact",
+            "list_artifacts",
+            "get_artifact",
+            "capture_screenshot",
             "request_previous_lane_handoff",
             "submit_lane_handoff",
         ]
@@ -476,5 +575,26 @@ mod tests {
 
         assert!(!names.is_empty());
         assert!(names.iter().all(|name| allowed.contains(name)));
+    }
+
+    #[test]
+    fn kanban_profile_update_task_schema_hides_protected_fields() {
+        let tools = build_tool_list_for_profile(Some("kanban-planning"));
+        let update_task = tools
+            .iter()
+            .find(|tool| tool.get("name").and_then(|value| value.as_str()) == Some("update_task"))
+            .expect("kanban profile should expose update_task");
+        let properties = update_task
+            .get("inputSchema")
+            .and_then(|schema| schema.get("properties"))
+            .and_then(|properties| properties.as_object())
+            .expect("update_task should expose input properties");
+
+        assert!(properties.contains_key("scope"));
+        assert!(properties.contains_key("acceptanceCriteria"));
+        assert!(!properties.contains_key("status"));
+        assert!(!properties.contains_key("completionSummary"));
+        assert!(!properties.contains_key("verificationVerdict"));
+        assert!(!properties.contains_key("assignedTo"));
     }
 }

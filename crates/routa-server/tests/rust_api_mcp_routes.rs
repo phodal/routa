@@ -296,6 +296,10 @@ async fn api_mcp_kanban_profile_filters_tools_list() {
         "update_task",
         "update_card",
         "move_card",
+        "create_note",
+        "provide_artifact",
+        "list_artifacts",
+        "get_artifact",
         "request_previous_lane_handoff",
         "submit_lane_handoff",
     ]
@@ -309,6 +313,36 @@ async fn api_mcp_kanban_profile_filters_tools_list() {
     assert!(
         names.contains(&"create_card") && names.contains(&"decompose_tasks"),
         "kanban profile should include planning tools, got: {names:?}"
+    );
+    assert!(
+        names.contains(&"provide_artifact")
+            && names.contains(&"list_artifacts")
+            && names.contains(&"get_artifact"),
+        "kanban profile should include artifact evidence tools, got: {names:?}"
+    );
+    assert!(
+        !names.contains(&"capture_screenshot"),
+        "kanban planning profile should not expose screenshot capture by default, got: {names:?}"
+    );
+
+    let update_task = tools
+        .iter()
+        .find(|tool| tool["name"] == "update_task")
+        .expect("kanban profile should include update_task");
+    let update_task_properties = update_task["inputSchema"]["properties"]
+        .as_object()
+        .expect("update_task should expose input properties");
+    assert!(
+        update_task_properties.contains_key("scope"),
+        "kanban update_task should keep story fields"
+    );
+    assert!(
+        !update_task_properties.contains_key("status"),
+        "kanban update_task should hide protected status field"
+    );
+    assert!(
+        !update_task_properties.contains_key("verificationVerdict"),
+        "kanban update_task should hide protected verification verdict field"
     );
 }
 
@@ -543,4 +577,72 @@ async fn api_mcp_kanban_profile_allows_update_task_for_story_readiness() {
         get_body["task"]["testCases"],
         json!(["Move to Dev is unblocked once fields exist"])
     );
+}
+
+#[tokio::test]
+async fn api_mcp_kanban_profile_blocks_update_task_workflow_metadata() {
+    let fixture = ApiFixture::new().await;
+
+    let create_response = fixture
+        .client
+        .post(fixture.endpoint("/api/tasks"))
+        .json(&json!({
+            "title": "Protect metadata",
+            "objective": "Keep workflow state behind move_card",
+            "workspaceId": "default"
+        }))
+        .send()
+        .await
+        .expect("POST /api/tasks");
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let create_body = read_json(create_response, "create task response").await;
+    let task_id = create_body["task"]["id"]
+        .as_str()
+        .expect("created task should include id");
+
+    let profile_query = "mcpProfile=kanban-planning";
+    let (session_id, _) = fixture.initialize_session(Some(profile_query)).await;
+    fixture
+        .complete_initialization(Some(profile_query), &session_id)
+        .await;
+
+    let update_response = fixture
+        .post_mcp(
+            Some(profile_query),
+            Some(&session_id),
+            json!({
+                "jsonrpc": "2.0",
+                "id": "tools-call-update-task-protected",
+                "method": "tools/call",
+                "params": {
+                    "name": "update_task",
+                    "arguments": {
+                        "taskId": task_id,
+                        "status": "COMPLETED",
+                        "verificationVerdict": "APPROVED"
+                    }
+                }
+            }),
+        )
+        .await;
+    assert_eq!(update_response.status(), StatusCode::OK);
+    let update_body = read_first_sse_json(update_response, "blocked update_task response").await;
+    let update_text = update_body["result"]["content"][0]["text"]
+        .as_str()
+        .expect("blocked update_task should return text payload");
+    assert!(
+        update_text.contains("protected task workflow fields"),
+        "expected protected-field error, got: {update_text}"
+    );
+
+    let get_response = fixture
+        .client
+        .get(fixture.endpoint(&format!("/api/tasks/{task_id}")))
+        .send()
+        .await
+        .expect("GET /api/tasks/{id}");
+    assert_eq!(get_response.status(), StatusCode::OK);
+    let get_body = read_json(get_response, "get task after blocked update_task").await;
+    assert_ne!(get_body["task"]["status"], json!("COMPLETED"));
+    assert!(get_body["task"]["verificationVerdict"].is_null());
 }

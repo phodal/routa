@@ -815,6 +815,108 @@ describe("KanbanTools", () => {
     expect(savedTask?.comments.at(-1)?.body).toContain("Contract gate blocked:");
   });
 
+  it("blocks move_card when generic transition gates are missing", async () => {
+    const boardStore = new InMemoryKanbanBoardStore();
+    const taskStore = new InMemoryTaskStore();
+    const tools = new KanbanTools(boardStore, taskStore);
+
+    const board = createKanbanBoard({
+      id: "board-transition-gates",
+      workspaceId: "default",
+      name: "Default Board",
+      isDefault: true,
+      columns: [
+        { id: "review", name: "Review", position: 0, stage: "review" },
+        {
+          id: "done",
+          name: "Done",
+          position: 1,
+          stage: "done",
+          automation: {
+            enabled: true,
+            requiredChecklist: ["browser smoke"],
+            requiredHumanApproval: true,
+            validatorCommand: "npm test",
+            gateMode: "blocking",
+          },
+        },
+      ],
+    });
+    await boardStore.save(board);
+
+    const task = createTask({
+      id: "task-transition-gates",
+      title: "Needs release evidence",
+      objective: "Move only when gates are satisfied",
+      workspaceId: "default",
+      boardId: board.id,
+      columnId: "review",
+    });
+    await taskStore.save(task);
+
+    const result = await tools.moveCard({
+      cardId: task.id,
+      targetColumnId: "done",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Cannot move task to "Done"');
+    expect(result.error).toContain("missing required checklist items: browser smoke");
+    expect(result.error).toContain("missing required human approval verdict");
+    expect(result.error).toContain("missing passing validator evidence for: npm test");
+    expect((await taskStore.get(task.id))?.columnId).toBe("review");
+  });
+
+  it("allows warning-mode move_card transition gates and records an audit comment", async () => {
+    const boardStore = new InMemoryKanbanBoardStore();
+    const taskStore = new InMemoryTaskStore();
+    const tools = new KanbanTools(boardStore, taskStore);
+
+    const board = createKanbanBoard({
+      id: "board-transition-warning",
+      workspaceId: "default",
+      name: "Default Board",
+      isDefault: true,
+      columns: [
+        { id: "review", name: "Review", position: 0, stage: "review" },
+        {
+          id: "done",
+          name: "Done",
+          position: 1,
+          stage: "done",
+          automation: {
+            enabled: true,
+            requiredHumanApproval: true,
+            gateMode: "warning",
+          },
+        },
+      ],
+    });
+    await boardStore.save(board);
+
+    const task = createTask({
+      id: "task-transition-warning",
+      title: "Warn on release evidence",
+      objective: "Move while leaving an audit warning",
+      workspaceId: "default",
+      boardId: board.id,
+      columnId: "review",
+    });
+    await taskStore.save(task);
+
+    const result = await tools.moveCard({
+      cardId: task.id,
+      targetColumnId: "done",
+    });
+
+    expect(result.success).toBe(true);
+    const savedTask = await taskStore.get(task.id);
+    expect(savedTask?.columnId).toBe("done");
+    expect(savedTask?.comments.at(-1)?.body).toBe(
+      'Transition gate warning for "Done": missing required human approval verdict.',
+    );
+  });
+
   it("breaks the contract retry loop after repeated invalid description updates", async () => {
     const boardStore = new InMemoryKanbanBoardStore();
     const taskStore = new InMemoryTaskStore();

@@ -187,6 +187,14 @@ export type ResolveDevSessionSupervision = (params: {
   stage: KanbanColumnStage;
 }) => Promise<KanbanDevSessionSupervision>;
 
+export type EnsureCompletionFallbackArtifact = (params: {
+  task: Task;
+  sessionId: string;
+  workspaceId: string;
+  stage: KanbanColumnStage;
+  transport?: string;
+}) => Promise<void>;
+
 export class KanbanWorkflowOrchestrator {
   private handlerKey = "kanban-workflow-orchestrator";
   private activeAutomations = new Map<string, ActiveAutomation>();
@@ -194,6 +202,7 @@ export class KanbanWorkflowOrchestrator {
   private cleanupCardSession?: CleanupCardSession;
   private resolveDevSessionSupervision?: ResolveDevSessionSupervision;
   private sendKanbanSessionPrompt?: SendKanbanSessionPrompt;
+  private ensureCompletionFallbackArtifact?: EnsureCompletionFallbackArtifact;
   private watchdogTimer?: ReturnType<typeof setInterval>;
 
   constructor(
@@ -260,6 +269,10 @@ export class KanbanWorkflowOrchestrator {
   /** Set the callback used to send a prompt message into a live ACP session */
   setSendKanbanSessionPrompt(fn: SendKanbanSessionPrompt): void {
     this.sendKanbanSessionPrompt = fn;
+  }
+
+  setEnsureCompletionFallbackArtifact(fn: EnsureCompletionFallbackArtifact): void {
+    this.ensureCompletionFallbackArtifact = fn;
   }
 
   /** Get all active automations */
@@ -493,6 +506,26 @@ export class KanbanWorkflowOrchestrator {
           task.lastSyncError = this.buildFailureMessage(automation, event, completionSatisfied);
         }
         await this.taskStore.save(task);
+      }
+
+      if (
+        task
+        && !failedToAdvanceWithinLane
+        && successEvent
+        && completionSatisfied
+        && this.ensureCompletionFallbackArtifact
+      ) {
+        try {
+          await this.ensureCompletionFallbackArtifact({
+            task,
+            sessionId: eventSessionId,
+            workspaceId: automation.workspaceId,
+            stage: automation.stage,
+            transport: typeof event.data?.transport === "string" ? event.data.transport : undefined,
+          });
+        } catch (error) {
+          console.warn("[WorkflowOrchestrator] Failed to create completion fallback artifact:", error);
+        }
       }
 
       // Auto-advance if configured and successful.

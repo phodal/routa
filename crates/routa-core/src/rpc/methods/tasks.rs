@@ -280,6 +280,42 @@ pub async fn list_artifacts(
 }
 
 // ---------------------------------------------------------------------------
+// tasks.getArtifact
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetArtifactParams {
+    pub artifact_id: String,
+    pub task_id: String,
+    pub workspace_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GetArtifactResult {
+    pub artifact: Artifact,
+}
+
+pub async fn get_artifact(
+    state: &AppState,
+    params: GetArtifactParams,
+) -> Result<GetArtifactResult, RpcError> {
+    let artifact = state
+        .artifact_store
+        .get(&params.artifact_id)
+        .await?
+        .ok_or_else(|| RpcError::NotFound(format!("Artifact {} not found", params.artifact_id)))?;
+    if artifact.task_id != params.task_id || artifact.workspace_id != params.workspace_id {
+        return Err(RpcError::NotFound(format!(
+            "Artifact {} not found",
+            params.artifact_id
+        )));
+    }
+
+    Ok(GetArtifactResult { artifact })
+}
+
+// ---------------------------------------------------------------------------
 // tasks.provideArtifact
 // ---------------------------------------------------------------------------
 
@@ -632,6 +668,30 @@ mod tests {
             listed.artifacts[0].context.as_deref(),
             Some("Verification screenshot")
         );
+
+        let fetched = get_artifact(
+            &state,
+            GetArtifactParams {
+                artifact_id: provided.artifact.id.clone(),
+                task_id: provided.artifact.task_id.clone(),
+                workspace_id: provided.artifact.workspace_id.clone(),
+            },
+        )
+        .await
+        .expect("artifact should be fetched within its task scope");
+        assert_eq!(fetched.artifact.id, provided.artifact.id);
+
+        let wrong_scope = get_artifact(
+            &state,
+            GetArtifactParams {
+                artifact_id: provided.artifact.id,
+                task_id: "other-task".to_string(),
+                workspace_id: "default".to_string(),
+            },
+        )
+        .await
+        .expect_err("artifact should not cross task scope");
+        assert!(matches!(wrong_scope, RpcError::NotFound(_)));
     }
 
     #[tokio::test]

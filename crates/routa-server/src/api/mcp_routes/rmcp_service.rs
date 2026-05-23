@@ -19,7 +19,8 @@ use crate::state::AppState;
 
 use super::tool_catalog;
 use super::{
-    execute_tool_public, inject_workspace_id, normalize_tool_name_public, McpRequestQuery,
+    execute_tool_for_profile_public, inject_workspace_id, normalize_tool_name_public,
+    McpRequestQuery,
 };
 
 pub(super) type SharedMcpHttpService =
@@ -145,7 +146,13 @@ impl ServerHandler for RoutaMcpHttpServer {
             .unwrap_or_else(|| serde_json::json!({}));
         inject_workspace_id(&mut arguments, &scope.workspace_id);
 
-        let result = execute_tool_public(&self.state, &normalized_tool_name, &arguments).await;
+        let result = execute_tool_for_profile_public(
+            &self.state,
+            &normalized_tool_name,
+            &arguments,
+            scope.mcp_profile.as_deref(),
+        )
+        .await;
         serde_json::from_value(result).map_err(|err| {
             McpError::internal_error(
                 format!("Failed to encode MCP tool result for '{normalized_tool_name}': {err}"),

@@ -4,6 +4,7 @@ import { executeMcpTool, getMcpToolDefinitions } from "@/core/mcp/mcp-tool-execu
 import { ToolMode } from "@/core/mcp/routa-mcp-tool-manager";
 import { KanbanTools } from "@/core/tools/kanban-tools";
 import { setGlobalToolMode, getGlobalToolMode } from "@/core/mcp/tool-mode-config";
+import { resolveMcpServerProfile } from "@/core/mcp/mcp-server-profiles";
 
 /**
  * GET /api/mcp/tools - List all MCP tool definitions
@@ -16,6 +17,7 @@ import { setGlobalToolMode, getGlobalToolMode } from "@/core/mcp/tool-mode-confi
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const modeParam = searchParams.get("mode") as ToolMode | null;
+  const mcpProfile = resolveMcpServerProfile(searchParams.get("mcpProfile") ?? undefined);
 
   // Use global mode if not explicitly specified
   const toolMode: ToolMode = modeParam === "full"
@@ -25,9 +27,10 @@ export async function GET(request: NextRequest) {
       : getGlobalToolMode();
 
   return NextResponse.json({
-    tools: getMcpToolDefinitions(toolMode),
+    tools: getMcpToolDefinitions(toolMode, mcpProfile),
     mode: toolMode,
     globalMode: getGlobalToolMode(),
+    mcpProfile,
   });
 }
 
@@ -76,13 +79,18 @@ export async function POST(request: NextRequest) {
         ? (body.args as Record<string, unknown>)
         : {};
     const toolMode: ToolMode = body?.mode === "full" ? "full" : "essential";
+    const mcpProfile = resolveMcpServerProfile(
+      typeof body?.mcpProfile === "string"
+        ? body.mcpProfile
+        : new URL(request.url).searchParams.get("mcpProfile") ?? undefined,
+    );
 
     if (!name) {
       return NextResponse.json({ error: "Tool name is required" }, { status: 400 });
     }
 
     // Always validate against full tool list (execution should work regardless of mode)
-    const toolExists = getMcpToolDefinitions("full").some((tool) => tool.name === name);
+    const toolExists = getMcpToolDefinitions("full", mcpProfile).some((tool) => tool.name === name);
     if (!toolExists) {
       return NextResponse.json({ error: `Unknown tool: ${name}` }, { status: 400 });
     }
@@ -92,11 +100,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "workspaceId is required in args or body" }, { status: 400 });
     }
 
-    const { system } = createRoutaMcpServer({ workspaceId, toolMode });
+    const { system } = createRoutaMcpServer({ workspaceId, toolMode, mcpProfile });
     const kanbanTools = new KanbanTools(system.kanbanBoardStore, system.taskStore);
     kanbanTools.setEventBus(system.eventBus);
     kanbanTools.setAutomationSystem(system);
-    const result = await executeMcpTool(system.tools, name, args, system.noteTools, system.workspaceTools, kanbanTools);
+    const result = await executeMcpTool(system.tools, name, args, system.noteTools, system.workspaceTools, kanbanTools, mcpProfile);
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(

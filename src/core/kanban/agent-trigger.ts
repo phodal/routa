@@ -16,6 +16,7 @@ import type { TaskLaneSession } from "../models/task";
 import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
 import { getLatestLaneSessionForColumn, getPreviousLaneRun } from "./task-lane-history";
 import type { KanbanAutomationStep, KanbanTransport } from "../models/kanban";
+import type { McpServerProfile } from "../mcp/mcp-server-profiles";
 import type { FlowDiagnosisReport } from "./flow-ledger-types";
 import { formatFlowGuidanceForPrompt } from "./flow-ledger";
 import { buildKanbanTaskAdaptiveHarnessOptions } from "./task-adaptive";
@@ -31,6 +32,19 @@ export interface TaskPromptSummaryContext {
   evidenceSummary?: TaskEvidenceSummary;
   storyReadiness?: TaskStoryReadiness;
   investValidation?: TaskInvestValidation;
+}
+
+export function resolveKanbanAutomationMcpProfile(
+  task: Task,
+  boardColumns: KanbanColumn[] = [],
+  summaryContext?: TaskPromptSummaryContext,
+): McpServerProfile | undefined {
+  const transitionArtifacts = resolveKanbanTransitionArtifacts(boardColumns, task.columnId ?? "backlog");
+  const hasArtifactGate = transitionArtifacts.currentRequiredArtifacts.length > 0
+    || transitionArtifacts.nextRequiredArtifacts.length > 0;
+  const hasMissingArtifacts = (summaryContext?.evidenceSummary?.artifact.missingRequired.length ?? 0) > 0;
+
+  return hasArtifactGate || hasMissingArtifacts ? "kanban-planning" : undefined;
 }
 
 function formatHandoffRequestType(
@@ -80,6 +94,36 @@ function formatContractRules(rules: KanbanContractRules | undefined): string {
   }
 
   return "one valid canonical ```yaml``` story contract";
+}
+
+function formatAdditionalTransitionGates(
+  column: { name?: string; automation?: Partial<KanbanColumn["automation"]> } | undefined,
+): string[] {
+  const automation = column?.automation;
+  if (!automation) return [];
+
+  const gates: string[] = [];
+  if ((automation.requiredChecklist?.length ?? 0) > 0) {
+    gates.push(`checked checklist items: ${automation.requiredChecklist!.join(", ")}`);
+  }
+  if (automation.requiredHumanApproval) {
+    gates.push("human approval verdict: APPROVED");
+  }
+  if (automation.validatorCommand?.trim()) {
+    gates.push(`validator evidence for: ${automation.validatorCommand.trim()}`);
+  }
+  if (gates.length === 0) {
+    return [];
+  }
+  const mode = automation.gateMode === "warning" ? "warning" : "blocking";
+  return [
+    "## Transition Gates",
+    "",
+    `Moving this card to ${column?.name ?? "the next column"} has ${mode} gate checks: ${gates.join("; ")}.`,
+    "For checklist gates, write checked markdown items such as `- [x] item name` in the task evidence text.",
+    "For validator gates, include the configured command and a passing result in verification evidence before moving.",
+    "",
+  ];
 }
 
 function uniqueNonEmptyStrings(values: Array<string | undefined>): string[] {
@@ -363,6 +407,7 @@ export function buildTaskPrompt(
         "",
       ]
     : [];
+  const additionalGateSection = formatAdditionalTransitionGates(transitionArtifacts.nextColumn);
 
   const laneRunHistorySection = !isBacklogPlanning && previousLaneRun
     ? [
@@ -516,6 +561,7 @@ export function buildTaskPrompt(
     ...artifactGateSection,
     ...contractGateSection,
     ...deliveryGateSection,
+    ...additionalGateSection,
     ...evidenceBundleSection,
     ...savedHistoryMemorySection,
     ...strategyMemorySection,
@@ -619,6 +665,11 @@ async function triggerAcpTaskAgent(params: {
   const sessionLabel = params.task.assignedSpecialistName
     ?? params.task.assignedSpecialistId
     ?? role;
+  const mcpProfile = resolveKanbanAutomationMcpProfile(
+    params.task,
+    params.boardColumns,
+    params.summaryContext,
+  );
 
   const newSessionResponse = await fetch(`${params.origin}/api/acp`, {
     method: "POST",
@@ -633,6 +684,7 @@ async function triggerAcpTaskAgent(params: {
         provider,
         role,
         toolMode: "full",
+        mcpProfile,
         workspaceId: params.workspaceId,
         specialistId: params.task.assignedSpecialistId,
         specialistLocale: params.specialistLocale,

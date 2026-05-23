@@ -14,6 +14,34 @@ pub enum KanbanTransport {
     A2a,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum KanbanTransitionGateMode {
+    #[default]
+    Blocking,
+    Warning,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct KanbanContractRules {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_canonical_story: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loop_breaker_threshold: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct KanbanDeliveryRules {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_committed_changes: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_clean_worktree: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_pull_request_ready: Option<bool>,
+}
+
 /// Automation configuration for a Kanban column.
 /// When a card is moved to this column, the automation can trigger an agent session.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -72,6 +100,24 @@ pub struct KanbanColumnAutomation {
     /// Required task fields before advancing
     #[serde(skip_serializing_if = "Option::is_none")]
     pub required_task_fields: Option<Vec<String>>,
+    /// Canonical story contract requirements
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contract_rules: Option<KanbanContractRules>,
+    /// Delivery-readiness requirements
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery_rules: Option<KanbanDeliveryRules>,
+    /// Required checked checklist labels before advancing
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_checklist: Option<Vec<String>>,
+    /// Require an explicit approved verification verdict before advancing
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_human_approval: Option<bool>,
+    /// Declarative validator command that must be represented in verification evidence
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validator_command: Option<String>,
+    /// Whether unmet transition gates block movement or leave an audit warning
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gate_mode: Option<KanbanTransitionGateMode>,
     /// Automatically advance card on session success
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_advance_on_success: Option<bool>,
@@ -364,6 +410,12 @@ fn build_recommended_automation(
         auto_advance_on_success: Some(auto_advance_on_success),
         required_artifacts: None,
         required_task_fields: None,
+        contract_rules: None,
+        delivery_rules: None,
+        required_checklist: None,
+        required_human_approval: None,
+        validator_command: None,
+        gate_mode: None,
         provider_id: None,
         role: None,
         specialist_id: None,
@@ -580,6 +632,12 @@ pub fn apply_recommended_automation_to_columns(columns: Vec<KanbanColumn>) -> Ve
                                     .or(normalized_recommended.required_artifacts.clone())
                             },
                             required_task_fields: current.required_task_fields,
+                            contract_rules: current.contract_rules,
+                            delivery_rules: current.delivery_rules,
+                            required_checklist: current.required_checklist,
+                            required_human_approval: current.required_human_approval,
+                            validator_command: current.validator_command,
+                            gate_mode: current.gate_mode,
                             auto_advance_on_success: normalized_recommended.auto_advance_on_success,
                         };
 

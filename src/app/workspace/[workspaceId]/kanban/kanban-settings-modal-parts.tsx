@@ -224,6 +224,10 @@ export function normalizeAutomationForDirtyCheck(
         autoAdvanceOnSuccess: Boolean(automation.autoAdvanceOnSuccess),
         requiredArtifacts: [...(automation.requiredArtifacts ?? [])].sort(),
         requiredTaskFields: [...(automation.requiredTaskFields ?? [])].sort(),
+        requiredChecklist: [...(automation.requiredChecklist ?? [])].sort(),
+        requiredHumanApproval: Boolean(automation.requiredHumanApproval),
+        validatorCommand: automation.validatorCommand?.trim() ?? null,
+        gateMode: automation.gateMode ?? "blocking",
         steps: getEditableAutomationSteps(automation).map((step, index) => ({
           id: step.id?.trim() || `step-${index + 1}`,
           transport: getStepTransport(step),
@@ -1055,6 +1059,78 @@ export function ColumnAutomationWorkspace({
                       </label>
                     );
                   })}
+                </div>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
+                <div className="mb-2">
+                  <div className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.transitionGates}</div>
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    {t.kanban.transitionGatesHint}
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <ConfigField label={t.kanban.requiredChecklist}>
+                    <textarea
+                      value={(automation.requiredChecklist ?? []).join("\n")}
+                      placeholder={t.kanban.requiredChecklistPlaceholder}
+                      rows={3}
+                      onChange={(event) => {
+                        const items = event.target.value
+                          .split(/\r?\n|,/)
+                          .map((item) => item.trim())
+                          .filter(Boolean);
+                        onUpdate({
+                          ...automation,
+                          requiredChecklist: items.length > 0 ? items : undefined,
+                        });
+                      }}
+                      className="min-h-24 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition hover:bg-slate-50 focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100 dark:hover:bg-[#111722]"
+                    />
+                  </ConfigField>
+                  <div className="space-y-3">
+                    <ConfigField label={t.kanban.gateMode}>
+                      <SelectControl
+                        value={automation.gateMode ?? "blocking"}
+                        onChange={(event) => onUpdate({
+                          ...automation,
+                          gateMode: event.target.value as ColumnAutomationConfig["gateMode"],
+                        })}
+                      >
+                        <option value="blocking">{t.kanban.gateModeBlocking}</option>
+                        <option value="warning">{t.kanban.gateModeWarning}</option>
+                      </SelectControl>
+                    </ConfigField>
+                    <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#0b1119]">
+                      <input
+                        type="checkbox"
+                        checked={automation.requiredHumanApproval ?? false}
+                        onChange={(event) => onUpdate({
+                          ...automation,
+                          requiredHumanApproval: event.target.checked || undefined,
+                        })}
+                        className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                      />
+                      <span>
+                        <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.requiredHumanApproval}</span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                          {t.kanban.requiredHumanApprovalHint}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <ConfigField label={t.kanban.validatorCommand}>
+                    <input
+                      value={automation.validatorCommand ?? ""}
+                      placeholder={t.kanban.validatorCommandPlaceholder}
+                      onChange={(event) => onUpdate({
+                        ...automation,
+                        validatorCommand: event.target.value.trim() || undefined,
+                      })}
+                      className={INPUT_CLASS}
+                    />
+                  </ConfigField>
                 </div>
               </div>
               <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">

@@ -2,11 +2,13 @@ mod a2a;
 
 use chrono::Utc;
 
-use crate::models::kanban::{KanbanAutomationStep, KanbanBoard, KanbanColumn};
+use crate::models::kanban::{
+    KanbanAutomationStep, KanbanBoard, KanbanColumn, KanbanTransitionGateMode,
+};
 use crate::models::task::{
     build_task_evidence_summary, build_task_invest_validation, build_task_story_readiness, Task,
     TaskEvidenceSummary, TaskInvestValidation, TaskLaneSession, TaskLaneSessionStatus,
-    TaskStoryReadiness,
+    TaskStoryReadiness, VerificationVerdict,
 };
 use crate::rpc::error::RpcError;
 use crate::state::AppState;
@@ -104,6 +106,176 @@ pub(super) fn ensure_required_task_fields_present(
         "Cannot move card to \"{}\": missing required task fields: {}. Please complete this story definition before moving the card.",
         target_column.name,
         missing_task_fields.join(", ")
+    )))
+}
+
+fn normalize_gate_token(value: &str) -> String {
+    value
+        .trim()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
+fn collect_task_text(task: &Task) -> String {
+    let mut values = vec![task.objective.as_str()];
+    values.extend(
+        [
+            task.comment.as_deref(),
+            task.scope.as_deref(),
+            task.completion_summary.as_deref(),
+            task.verification_report.as_deref(),
+        ]
+        .into_iter()
+        .flatten(),
+    );
+    values.extend(
+        task.acceptance_criteria
+            .as_ref()
+            .into_iter()
+            .flat_map(|items| items.iter().map(String::as_str)),
+    );
+    values.extend(
+        task.verification_commands
+            .as_ref()
+            .into_iter()
+            .flat_map(|items| items.iter().map(String::as_str)),
+    );
+    values.extend(
+        task.test_cases
+            .as_ref()
+            .into_iter()
+            .flat_map(|items| items.iter().map(String::as_str)),
+    );
+    values
+        .into_iter()
+        .filter(|value| !value.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn checked_checklist_labels(text: &str) -> std::collections::BTreeSet<String> {
+    text.lines()
+        .filter_map(|line| {
+            let trimmed = line.trim_start();
+            let rest = trimmed
+                .strip_prefix("- [x] ")
+                .or_else(|| trimmed.strip_prefix("- [X] "))
+                .or_else(|| trimmed.strip_prefix("* [x] "))
+                .or_else(|| trimmed.strip_prefix("* [X] "))?;
+            Some(normalize_gate_token(rest))
+        })
+        .collect()
+}
+
+fn validator_evidence_present(task: &Task, command: &str) -> bool {
+    let command = command.trim();
+    if command.is_empty() {
+        return true;
+    }
+    let evidence = [
+        task.verification_report.as_deref(),
+        task.completion_summary.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .chain(
+        task.verification_commands
+            .as_ref()
+            .into_iter()
+            .flat_map(|items| items.iter().map(String::as_str)),
+    )
+    .collect::<Vec<_>>()
+    .join("\n");
+    let command_lower = command.to_ascii_lowercase();
+    evidence.lines().any(|line| {
+        let line_lower = line.to_ascii_lowercase();
+        line_lower.contains(&command_lower)
+            && !["fail", "failed", "error", "errors", "red"]
+                .iter()
+                .any(|token| {
+                    line_lower
+                        .split(|ch: char| !ch.is_ascii_alphanumeric())
+                        .any(|word| word == *token)
+                })
+            && ["pass", "passed", "success", "succeeded", "ok", "green"]
+                .iter()
+                .any(|token| {
+                    line_lower
+                        .split(|ch: char| !ch.is_ascii_alphanumeric())
+                        .any(|word| word == *token)
+                })
+    })
+}
+
+pub(super) fn ensure_transition_gates_satisfied(
+    task: &Task,
+    target_column: &KanbanColumn,
+) -> Result<Option<String>, RpcError> {
+    let Some(automation) = target_column.automation.as_ref() else {
+        return Ok(None);
+    };
+    if !automation.enabled {
+        return Ok(None);
+    }
+
+    let mut issues = Vec::new();
+    let required_checklist = automation
+        .required_checklist
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|item| item.trim().to_string())
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>();
+    if !required_checklist.is_empty() {
+        let checked = checked_checklist_labels(&collect_task_text(task));
+        let missing = required_checklist
+            .into_iter()
+            .filter(|item| !checked.contains(&normalize_gate_token(item)))
+            .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            issues.push(format!(
+                "missing required checklist items: {}",
+                missing.join(", ")
+            ));
+        }
+    }
+
+    if automation.required_human_approval.unwrap_or(false)
+        && task.verification_verdict != Some(VerificationVerdict::Approved)
+    {
+        issues.push("missing required human approval verdict".to_string());
+    }
+
+    if let Some(command) = automation
+        .validator_command
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if !validator_evidence_present(task, command) {
+            issues.push(format!("missing passing validator evidence for: {command}"));
+        }
+    }
+
+    if issues.is_empty() {
+        return Ok(None);
+    }
+
+    if automation.gate_mode == Some(KanbanTransitionGateMode::Warning) {
+        return Ok(Some(format!(
+            "Transition gate warning for \"{}\": {}.",
+            target_column.name,
+            issues.join("; ")
+        )));
+    }
+
+    Err(RpcError::BadRequest(format!(
+        "Cannot move card to \"{}\": {}.",
+        target_column.name,
+        issues.join("; ")
     )))
 }
 

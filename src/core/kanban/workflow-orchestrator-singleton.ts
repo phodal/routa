@@ -45,6 +45,7 @@ import {
   buildTaskInvestValidation,
   buildTaskStoryReadiness,
 } from "./task-derived-summary";
+import { ensureCompletionFallbackArtifact } from "./completion-fallback-artifact";
 
 // Use globalThis to survive HMR in Next.js dev mode
 const GLOBAL_KEY = "__routa_workflow_orchestrator__";
@@ -445,6 +446,16 @@ export function startWorkflowOrchestrator(system: RoutaSystem): void {
     sessionId: params.sessionId,
     prompt: params.prompt,
   }));
+  orchestrator.setEnsureCompletionFallbackArtifact(async (params) => {
+    await ensureCompletionFallbackArtifact({
+      task: params.task,
+      sessionId: params.sessionId,
+      workspaceId: params.workspaceId,
+      stage: params.stage,
+      transport: params.transport === "a2a" ? "a2a" : "acp",
+      artifactStore: system.artifactStore,
+    });
+  });
   orchestrator.start();
   queue.start();
   g[STARTED_KEY] = true;

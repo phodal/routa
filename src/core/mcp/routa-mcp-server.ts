@@ -63,6 +63,7 @@ export function createRoutaMcpServer(
 
   const toolManager = new RoutaMcpToolManager(routaSystem.tools, opts.workspaceId);
   toolManager.setToolMode(toolMode);
+  toolManager.setMcpProfile(opts.mcpProfile);
   toolManager.setAllowedTools(getMcpProfileToolAllowlist(opts.mcpProfile));
 
   // Scope note/task creation to this ACP session when provided

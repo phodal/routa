@@ -550,6 +550,113 @@ describe("/api/tasks/[taskId]", () => {
     });
   });
 
+  it("blocks moving a card into a lane when generic transition gates are missing", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Move to release",
+      objective: "Needs explicit gate evidence",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "review",
+      status: TaskStatus.REVIEW_REQUIRED,
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "review", name: "Review", position: 0, stage: "review" },
+        {
+          id: "done",
+          name: "Done",
+          position: 1,
+          stage: "done",
+          automation: {
+            requiredChecklist: ["browser smoke"],
+            requiredHumanApproval: true,
+            validatorCommand: "npm test",
+            gateMode: "blocking",
+          },
+        },
+      ],
+    });
+
+    const response = await PATCH(new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ columnId: "done" }),
+      headers: { "Content-Type": "application/json" },
+    }), {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain('Cannot move task to "Done"');
+    expect(data.transitionGate).toMatchObject({
+      mode: "blocking",
+      passed: false,
+      blocking: true,
+    });
+    expect(data.transitionGate.issues.map((issue: { code: string }) => issue.code)).toEqual([
+      "required_checklist",
+      "required_human_approval",
+      "validator_command",
+    ]);
+    expect(taskStore.save).not.toHaveBeenCalled();
+  });
+
+  it("allows warning-mode generic transition gates and records an audit comment", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Move with warning",
+      objective: "Warn but do not block",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "review",
+      status: TaskStatus.REVIEW_REQUIRED,
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "review", name: "Review", position: 0, stage: "review" },
+        {
+          id: "done",
+          name: "Done",
+          position: 1,
+          stage: "done",
+          automation: {
+            requiredHumanApproval: true,
+            gateMode: "warning",
+          },
+        },
+      ],
+    });
+
+    const response = await PATCH(new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ columnId: "done" }),
+      headers: { "Content-Type": "application/json" },
+    }), {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.task.columnId).toBe("done");
+    expect(data.task.comments).toEqual([
+      expect.objectContaining({
+        body: 'Transition gate warning for "Done": missing required human approval verdict.',
+      }),
+    ]);
+    expect(taskStore.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-1",
+      columnId: "done",
+      comments: [expect.objectContaining({
+        body: 'Transition gate warning for "Done": missing required human approval verdict.',
+      })],
+    }));
+  });
+
   it("converges a final approved review verdict into done", async () => {
     const task = createTask({
       id: "task-1",
