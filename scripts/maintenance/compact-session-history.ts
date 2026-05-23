@@ -185,10 +185,18 @@ function groupConsecutiveChunks(rows: MessageRow[]): MessageRow[][] {
 }
 
 function buildMergedPayload(group: MessageRow[]): Record<string, unknown> | null {
-  const compacted = compactSessionHistoryNotifications(group.map((row) => ({
-    ...(parsePayload(row.payload) as SessionHistoryNotification),
-    sessionId: row.session_id,
-  })));
+  const notifications: SessionHistoryNotification[] = [];
+  for (const row of group) {
+    try {
+      notifications.push({
+        ...(parsePayload(row.payload) as SessionHistoryNotification),
+        sessionId: row.session_id,
+      });
+    } catch {
+      return null;
+    }
+  }
+  const compacted = compactSessionHistoryNotifications(notifications);
   const merged = compacted.history[0];
   if (!merged || compacted.compactedCount !== 1) {
     return null;

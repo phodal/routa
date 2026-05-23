@@ -31,6 +31,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+USER node
+
 CMD ["npm", "run", "db:push"]
 
 # ── Stage 3: build ───────────────────────────────────────────────────────

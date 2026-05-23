@@ -58,6 +58,12 @@ function createFixtureDb(): string {
     old,
     null,
   );
+  sqlite.prepare("INSERT INTO acp_sessions (id, message_history, updated_at, lease_expires_at) VALUES (?, ?, ?, ?)").run(
+    "malformed-session",
+    JSON.stringify([]),
+    old,
+    null,
+  );
   const insertMessage = sqlite.prepare(
     "INSERT INTO session_messages (id, session_id, message_index, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)",
   );
@@ -67,6 +73,8 @@ function createFixtureDb(): string {
   insertMessage.run("m4", "active-session", 1, "agent_message_chunk", JSON.stringify({ sessionId: "active-session", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "D" } } }), old);
   insertMessage.run("m5", "invalid-session", 0, "agent_message_chunk", JSON.stringify({ type: "agent_message", text: "Keep" }), old);
   insertMessage.run("m6", "invalid-session", 1, "agent_message_chunk", JSON.stringify({ type: "agent_message", text: "Me" }), old);
+  insertMessage.run("m7", "malformed-session", 0, "agent_message_chunk", JSON.stringify({ type: "agent_message_chunk", text: "Bad" }), old);
+  insertMessage.run("m8", "malformed-session", 1, "agent_message_chunk", "{\"type\":\"agent_message_chunk\",", old);
   sqlite.close();
   return dbPath;
 }
@@ -97,7 +105,7 @@ describe("compact-session-history maintenance script", () => {
     expect(summary.protectedActiveSessions).toEqual(["active-session"]);
 
     const sqlite = new BetterSqlite3(dbPath);
-    expect(sqlite.prepare("SELECT COUNT(*) AS count FROM session_messages").get()).toEqual({ count: 6 });
+    expect(sqlite.prepare("SELECT COUNT(*) AS count FROM session_messages").get()).toEqual({ count: 8 });
     sqlite.close();
   });
 
@@ -116,7 +124,7 @@ describe("compact-session-history maintenance script", () => {
 
     expect(summary.sessionMessages.deletedRows).toBe(1);
     const sqlite = new BetterSqlite3(dbPath);
-    expect(sqlite.prepare("SELECT COUNT(*) AS count FROM session_messages").get() as CountRow).toEqual({ count: 5 });
+    expect(sqlite.prepare("SELECT COUNT(*) AS count FROM session_messages").get() as CountRow).toEqual({ count: 7 });
     const oldPayloadRow = sqlite.prepare("SELECT payload FROM session_messages WHERE id = ?").get("m1") as PayloadRow;
     const oldPayload = JSON.parse(oldPayloadRow.payload);
     expect(oldPayload.update.sessionUpdate).toBe("agent_message");
@@ -134,6 +142,14 @@ describe("compact-session-history maintenance script", () => {
     };
     expect(invalidPayloadRow.event_type).toBe("agent_message_chunk");
     expect(JSON.parse(invalidPayloadRow.payload).text).toBe("Me");
+
+    const malformedPayloadRows = sqlite
+      .prepare("SELECT id, event_type, payload FROM session_messages WHERE session_id = ? ORDER BY message_index")
+      .all("malformed-session") as Array<{ id: string; event_type: string; payload: string }>;
+    expect(malformedPayloadRows).toHaveLength(2);
+    expect(malformedPayloadRows.map((row) => row.id)).toEqual(["m7", "m8"]);
+    expect(malformedPayloadRows.every((row) => row.event_type === "agent_message_chunk")).toBe(true);
+    expect(malformedPayloadRows[1].payload).toBe("{\"type\":\"agent_message_chunk\",");
 
     const oldSession = sqlite.prepare("SELECT message_history FROM acp_sessions WHERE id = ?").get("old-session") as SessionHistoryRow;
     expect(JSON.parse(oldSession.message_history)).toHaveLength(2);
