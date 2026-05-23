@@ -55,8 +55,8 @@ function createFixtureDb(): string {
   const insertMessage = sqlite.prepare(
     "INSERT INTO session_messages (id, session_id, message_index, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)",
   );
-  insertMessage.run("m1", "old-session", 0, "agent_message_chunk", JSON.stringify({ sessionId: "old-session", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "A" } } }), old);
-  insertMessage.run("m2", "old-session", 1, "agent_message_chunk", JSON.stringify({ sessionId: "old-session", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "B" } } }), old);
+  insertMessage.run("m1", "old-session", 0, "agent_message_chunk", JSON.stringify({ type: "agent_message_chunk", text: "A" }), old);
+  insertMessage.run("m2", "old-session", 1, "agent_message_chunk", JSON.stringify({ type: "agent_message_chunk", text: "B" }), old);
   insertMessage.run("m3", "active-session", 0, "agent_message_chunk", JSON.stringify({ sessionId: "active-session", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "C" } } }), old);
   insertMessage.run("m4", "active-session", 1, "agent_message_chunk", JSON.stringify({ sessionId: "active-session", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "D" } } }), old);
   sqlite.close();
@@ -113,6 +113,8 @@ describe("compact-session-history maintenance script", () => {
     const oldPayload = JSON.parse(oldPayloadRow.payload);
     expect(oldPayload.update.sessionUpdate).toBe("agent_message");
     expect(oldPayload.update.content.text).toBe("AB");
+    expect(oldPayload.type).toBe("agent_message");
+    expect(oldPayload.text).toBe("AB");
 
     const activePayloadRow = sqlite.prepare("SELECT payload FROM session_messages WHERE id = ?").get("m3") as PayloadRow;
     const activePayload = JSON.parse(activePayloadRow.payload);

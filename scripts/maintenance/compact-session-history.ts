@@ -18,7 +18,6 @@ if (!runtimeHistoryCompactorModule?.compactSessionHistoryNotifications) {
 
 const {
   compactSessionHistoryNotifications,
-  getSessionHistoryChunkText,
 } = runtimeHistoryCompactorModule;
 
 type Mode = "dry-run" | "apply";
@@ -181,17 +180,15 @@ function groupConsecutiveChunks(rows: MessageRow[]): MessageRow[][] {
 }
 
 function buildMergedPayload(group: MessageRow[]): Record<string, unknown> {
-  const first = parsePayload(group[0].payload);
-  const text = group.map((row) => getSessionHistoryChunkText(parsePayload(row.payload))).join("");
-  return {
-    ...first,
-    update: {
-      ...(typeof first.update === "object" && first.update ? first.update : {}),
-      sessionUpdate: "agent_message",
-      content: { type: "text", text },
-      mergedFrom: group.length,
-    },
-  };
+  const compacted = compactSessionHistoryNotifications(group.map((row) => ({
+    ...(parsePayload(row.payload) as SessionHistoryNotification),
+    sessionId: row.session_id,
+  })));
+  const merged = compacted.history[0];
+  if (!merged || compacted.compactedCount !== 1) {
+    throw new Error(`Unexpected chunk compaction result for session ${group[0].session_id}`);
+  }
+  return merged as Record<string, unknown>;
 }
 
 export function runSessionHistoryMaintenance(options: Options): MaintenanceSummary {

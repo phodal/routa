@@ -238,20 +238,15 @@ export class HistoryCompactor {
       for (const group of groups) {
         if (group.length < 2) continue;
 
-        const mergedContent = group.map((c) => getSessionHistoryChunkText(c.payload)).join("");
-
         const first = group[0];
-        const mergedPayload = compactSessionHistoryNotifications([
-          first.payload as SessionHistoryNotification,
-          ...group.slice(1).map((chunk) => chunk.payload as SessionHistoryNotification),
-        ]).history[0] ?? {
-          ...(first.payload as Record<string, unknown>),
-          update: {
-            sessionUpdate: "agent_message",
-            content: { type: "text", text: mergedContent },
-            mergedFrom: group.length,
-          },
-        };
+        const compactedGroup = compactSessionHistoryNotifications(group.map((chunk) => ({
+          ...(chunk.payload as SessionHistoryNotification),
+          sessionId: chunk.sessionId,
+        })));
+        const mergedPayload = compactedGroup.history[0];
+        if (!mergedPayload || compactedGroup.compactedCount !== 1) {
+          continue;
+        }
 
         // Update first chunk to be the merged message
         await this.db
