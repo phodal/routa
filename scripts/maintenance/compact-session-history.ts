@@ -47,6 +47,11 @@ interface MessageRow {
   payload: string | Record<string, unknown>;
 }
 
+interface PlannedMessageGroup {
+  group: MessageRow[];
+  mergedPayload: Record<string, unknown>;
+}
+
 interface MaintenanceSummary {
   mode: Mode;
   dbPath: string;
@@ -179,14 +184,14 @@ function groupConsecutiveChunks(rows: MessageRow[]): MessageRow[][] {
   return groups.filter((group) => group.length > 1);
 }
 
-function buildMergedPayload(group: MessageRow[]): Record<string, unknown> {
+function buildMergedPayload(group: MessageRow[]): Record<string, unknown> | null {
   const compacted = compactSessionHistoryNotifications(group.map((row) => ({
     ...(parsePayload(row.payload) as SessionHistoryNotification),
     sessionId: row.session_id,
   })));
   const merged = compacted.history[0];
   if (!merged || compacted.compactedCount !== 1) {
-    throw new Error(`Unexpected chunk compaction result for session ${group[0].session_id}`);
+    return null;
   }
   return merged as Record<string, unknown>;
 }
@@ -244,17 +249,25 @@ export function runSessionHistoryMaintenance(options: Options): MaintenanceSumma
       .all(cutoff) as MessageRow[];
     const inactiveMessageRows = messageRows.filter((row) => !activeSessionIds.has(row.session_id));
     const groups = groupConsecutiveChunks(inactiveMessageRows);
-    summary.sessionMessages.candidateSessions = new Set(groups.map((group) => group[0].session_id)).size;
-    summary.sessionMessages.mergedGroups = groups.length;
-    summary.sessionMessages.mergedChunks = groups.reduce((total, group) => total + group.length, 0);
-    summary.sessionMessages.deletedRows = groups.reduce((total, group) => total + group.length - 1, 0);
+    const plannedMessageGroups: PlannedMessageGroup[] = [];
+    for (const group of groups) {
+      const mergedPayload = buildMergedPayload(group);
+      if (!mergedPayload) {
+        continue;
+      }
+      plannedMessageGroups.push({ group, mergedPayload });
+    }
+    summary.sessionMessages.candidateSessions = new Set(plannedMessageGroups.map((item) => item.group[0].session_id)).size;
+    summary.sessionMessages.mergedGroups = plannedMessageGroups.length;
+    summary.sessionMessages.mergedChunks = plannedMessageGroups.reduce((total, item) => total + item.group.length, 0);
+    summary.sessionMessages.deletedRows = plannedMessageGroups.reduce((total, item) => total + item.group.length - 1, 0);
 
-    const applyMessageGroups = sqlite.transaction((chunkGroups: MessageRow[][]) => {
+    const applyMessageGroups = sqlite.transaction((chunkGroups: PlannedMessageGroup[]) => {
       const update = sqlite.prepare("UPDATE session_messages SET event_type = ?, payload = ? WHERE id = ?");
       const remove = sqlite.prepare("DELETE FROM session_messages WHERE id = ?");
-      for (const group of chunkGroups) {
-        update.run("agent_message", JSON.stringify(buildMergedPayload(group)), group[0].id);
-        for (const row of group.slice(1)) {
+      for (const item of chunkGroups) {
+        update.run("agent_message", JSON.stringify(item.mergedPayload), item.group[0].id);
+        for (const row of item.group.slice(1)) {
           remove.run(row.id);
         }
       }
@@ -294,7 +307,7 @@ export function runSessionHistoryMaintenance(options: Options): MaintenanceSumma
     }
 
     if (options.mode === "apply") {
-      applyMessageGroups(groups);
+      applyMessageGroups(plannedMessageGroups);
       applySessionJson(sessionJsonUpdates);
       if (options.checkpoint) {
         sqlite.pragma("wal_checkpoint(TRUNCATE)");
