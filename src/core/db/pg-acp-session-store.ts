@@ -6,11 +6,17 @@ import { and, asc, desc, eq, gt } from "drizzle-orm";
 import type { Database } from "./index";
 import { acpSessions, sessionMessages } from "./schema";
 import type { AcpSessionStore, AcpSession, AcpSessionNotification } from "../store/acp-session-store";
+import {
+  compactSessionHistoryForPersistence,
+  compactSessionNotificationForPersistence,
+} from "../acp/session-notification-retention";
 
 export class PgAcpSessionStore implements AcpSessionStore {
   constructor(private db: Database) {}
 
   async save(session: AcpSession): Promise<void> {
+    const messageHistory = compactSessionHistoryForPersistence(session.messageHistory);
+
     await this.db
       .insert(acpSessions)
       .values({
@@ -25,7 +31,7 @@ export class PgAcpSessionStore implements AcpSessionStore {
         modeId: session.modeId,
         model: session.model,
         firstPromptSent: session.firstPromptSent ?? false,
-        messageHistory: session.messageHistory,
+        messageHistory,
         parentSessionId: session.parentSessionId,
         specialistId: session.specialistId,
         executionMode: session.executionMode,
@@ -46,7 +52,7 @@ export class PgAcpSessionStore implements AcpSessionStore {
           modeId: session.modeId,
           model: session.model,
           firstPromptSent: session.firstPromptSent ?? false,
-          messageHistory: session.messageHistory,
+          messageHistory,
           parentSessionId: session.parentSessionId,
           specialistId: session.specialistId,
           executionMode: session.executionMode,
@@ -88,7 +94,8 @@ export class PgAcpSessionStore implements AcpSessionStore {
   async appendHistory(sessionId: string, notification: AcpSessionNotification): Promise<void> {
     const session = await this.get(sessionId);
     if (!session) return;
-    const history = [...session.messageHistory, notification];
+    const persistedNotification = compactSessionNotificationForPersistence(notification);
+    const history = [...session.messageHistory, persistedNotification];
     const nextIndex = await this.getNextMessageIndex(sessionId);
     const eventType = String(
       (notification.update as Record<string, unknown> | undefined)?.sessionUpdate ?? "notification",
@@ -102,7 +109,7 @@ export class PgAcpSessionStore implements AcpSessionStore {
       sessionId,
       messageIndex: nextIndex,
       eventType,
-      payload: notification as typeof sessionMessages.$inferInsert.payload,
+      payload: persistedNotification as typeof sessionMessages.$inferInsert.payload,
     });
 
     await this.db

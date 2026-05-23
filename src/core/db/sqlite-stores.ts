@@ -18,6 +18,10 @@ import type { AgentStore } from "../store/agent-store";
 import type { ConversationStore } from "../store/conversation-store";
 import type { NoteStore } from "../store/note-store";
 import type { AcpSessionStore, AcpSession, AcpSessionNotification } from "../store/acp-session-store";
+import {
+  compactSessionHistoryForPersistence,
+  compactSessionNotificationForPersistence,
+} from "../acp/session-notification-retention";
 import type { KanbanBoardStore } from "../store/kanban-board-store";
 import type { ArtifactStore } from "../store/artifact-store";
 export { SqliteWorkspaceStore } from "./sqlite-workspace-store";
@@ -733,6 +737,8 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
   constructor(private db: SqliteDb) {}
 
   async save(session: AcpSession): Promise<void> {
+    const messageHistory = compactSessionHistoryForPersistence(session.messageHistory);
+
     await this.db
       .insert(sqliteSchema.acpSessions)
       .values({
@@ -747,7 +753,7 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
         modeId: session.modeId,
         model: session.model,
         firstPromptSent: session.firstPromptSent ?? false,
-        messageHistory: session.messageHistory,
+        messageHistory,
         parentSessionId: session.parentSessionId,
         specialistId: session.specialistId,
         executionMode: session.executionMode,
@@ -768,7 +774,7 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
           modeId: session.modeId,
           model: session.model,
           firstPromptSent: session.firstPromptSent ?? false,
-          messageHistory: session.messageHistory,
+          messageHistory,
           parentSessionId: session.parentSessionId,
           specialistId: session.specialistId,
           executionMode: session.executionMode,
@@ -812,7 +818,8 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
   async appendHistory(sessionId: string, notification: AcpSessionNotification): Promise<void> {
     const session = await this.get(sessionId);
     if (!session) return;
-    const history = [...session.messageHistory, notification];
+    const persistedNotification = compactSessionNotificationForPersistence(notification);
+    const history = [...session.messageHistory, persistedNotification];
 
     const nextIndexRows = await this.db
       .select({ messageIndex: sqliteSchema.sessionMessages.messageIndex })
@@ -835,7 +842,7 @@ export class SqliteAcpSessionStore implements AcpSessionStore {
         sessionId,
         messageIndex: nextIndex,
         eventType,
-        payload: notification as typeof sqliteSchema.sessionMessages.$inferInsert.payload,
+        payload: persistedNotification as typeof sqliteSchema.sessionMessages.$inferInsert.payload,
       });
 
     await this.db

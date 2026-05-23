@@ -14,6 +14,10 @@ import { SqliteAcpSessionStore } from "@/core/db/sqlite-stores";
 import { findLocalSessionRecord, LocalSessionProvider } from "@/core/storage/local-session-provider";
 import type { AcpSession } from "@/core/store/acp-session-store";
 import type { SessionRecord, SessionJsonlEntry } from "@/core/storage/types";
+import {
+  compactSessionHistoryForPersistence,
+  compactSessionNotificationForPersistence,
+} from "@/core/acp/session-notification-retention";
 
 function isServerless(): boolean {
   return !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
@@ -311,7 +315,7 @@ export async function saveHistoryToDb(
   history: import("@/core/acp/http-session-store").SessionUpdateNotification[]
 ): Promise<void> {
   const driver = getDatabaseDriver();
-  const normalizedHistory = normalizeSessionHistory(history);
+  const normalizedHistory = compactSessionHistoryForPersistence(normalizeSessionHistory(history));
   const firstPromptSent = hasUserMessageInHistory(normalizedHistory);
 
   // 1. Save full history snapshot to DB
@@ -387,16 +391,17 @@ export async function appendSessionNotificationEvent(
   cwdOverride?: string,
 ): Promise<void> {
   const driver = getDatabaseDriver();
+  const persistedNotification = compactSessionNotificationForPersistence(notification);
 
   if (driver !== "memory") {
     try {
       if (driver === "postgres") {
         const db = getPostgresDatabase();
-        await new PgAcpSessionStore(db).appendHistory(sessionId, notification);
+        await new PgAcpSessionStore(db).appendHistory(sessionId, persistedNotification);
       } else {
         const { getSqliteDatabase } = await loadSqliteDatabaseModule();
         const db = getSqliteDatabase();
-        await new SqliteAcpSessionStore(db).appendHistory(sessionId, notification);
+        await new SqliteAcpSessionStore(db).appendHistory(sessionId, persistedNotification);
       }
     } catch {
       // Non-fatal — DB append is best-effort
@@ -426,7 +431,7 @@ export async function appendSessionNotificationEvent(
     if (!cwd) return;
 
     const local = new LocalSessionProvider(cwd);
-    await local.appendMessage(sessionId, toJsonlHistoryEntry(sessionId, notification));
+    await local.appendMessage(sessionId, toJsonlHistoryEntry(sessionId, persistedNotification));
   } catch {
     // Non-fatal — local event log append is best-effort
   }
