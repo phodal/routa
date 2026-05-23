@@ -296,6 +296,7 @@ async fn api_mcp_kanban_profile_filters_tools_list() {
         "update_task",
         "update_card",
         "move_card",
+        "create_note",
         "provide_artifact",
         "list_artifacts",
         "get_artifact",
