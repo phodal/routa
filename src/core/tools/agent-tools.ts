@@ -1214,14 +1214,27 @@ export class AgentTools {
   /**
    * Get a specific artifact by ID.
    */
-  async getArtifact(artifactId: string): Promise<ToolResult> {
+  async getArtifact(params: string | {
+    artifactId: string;
+    taskId?: string;
+    workspaceId?: string;
+  }): Promise<ToolResult> {
     if (!this.artifactStore) {
       return errorResult("Artifact store not configured");
     }
 
+    const artifactId = typeof params === "string" ? params : params.artifactId;
     const artifact = await this.artifactStore.getArtifact(artifactId);
     if (!artifact) {
       return errorResult(`Artifact not found: ${artifactId}`);
+    }
+    if (typeof params !== "string") {
+      if (params.taskId && artifact.taskId !== params.taskId) {
+        return errorResult(`Artifact not found: ${artifactId}`);
+      }
+      if (params.workspaceId && artifact.workspaceId !== params.workspaceId) {
+        return errorResult(`Artifact not found: ${artifactId}`);
+      }
     }
 
     return successResult({

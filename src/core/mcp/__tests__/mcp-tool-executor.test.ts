@@ -266,6 +266,21 @@ describe("executeMcpTool", () => {
     expect(
       getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "save_history_memory_context"),
     ).toBe(true);
+    expect(
+      getMcpToolDefinitions("full", "kanban-planning").some((tool) => tool.name === "provide_artifact"),
+    ).toBe(true);
+    expect(
+      getMcpToolDefinitions("full", "kanban-planning").some((tool) => tool.name === "list_artifacts"),
+    ).toBe(true);
+    expect(
+      getMcpToolDefinitions("full", "kanban-planning").some((tool) => tool.name === "get_artifact"),
+    ).toBe(true);
+    expect(
+      getMcpToolDefinitions("full", "kanban-planning").some((tool) => tool.name === "capture_screenshot"),
+    ).toBe(true);
+    expect(
+      getMcpToolDefinitions("full", "kanban-planning").some((tool) => tool.name === "create_note"),
+    ).toBe(true);
 
     const loadFeatureTreeTool = getMcpToolDefinitions("essential", "kanban-planning")
       .find((tool) => tool.name === "load_feature_tree_context");

@@ -475,7 +475,11 @@ export async function executeMcpTool(
         })
       );
     case "get_artifact":
-      return formatResult(await tools.getArtifact(args.artifactId as string));
+      return formatResult(await tools.getArtifact({
+        artifactId: args.artifactId as string,
+        taskId: args.taskId as string | undefined,
+        workspaceId: args.workspaceId as string | undefined,
+      }));
     case "list_pending_artifact_requests":
       return formatResult(await tools.listPendingArtifactRequests(args.agentId as string));
     case "capture_screenshot":
@@ -1318,8 +1322,10 @@ export function getMcpToolDefinitions(
         type: "object",
         properties: {
           artifactId: { type: "string", description: "Artifact ID" },
+          taskId: { type: "string", description: "Task/card ID the artifact belongs to" },
+          workspaceId: { type: "string", description: "Workspace ID the artifact belongs to" },
         },
-        required: ["artifactId"],
+        required: ["artifactId", "taskId", "workspaceId"],
       },
     },
     {

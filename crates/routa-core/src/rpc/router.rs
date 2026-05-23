@@ -183,6 +183,11 @@ impl RpcRouter {
                 let r = methods::tasks::list_artifacts(&self.state, p).await?;
                 Ok(serde_json::to_value(r).unwrap())
             }
+            "tasks.getArtifact" => {
+                let p = parse_params(params)?;
+                let r = methods::tasks::get_artifact(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
             "tasks.provideArtifact" => {
                 let p = parse_params(params)?;
                 let r = methods::tasks::provide_artifact(&self.state, p).await?;
@@ -377,6 +382,7 @@ impl RpcRouter {
             "tasks.updateStatus",
             "tasks.findReady",
             "tasks.listArtifacts",
+            "tasks.getArtifact",
             "tasks.provideArtifact",
             "kanban.listBoards",
             "kanban.createBoard",

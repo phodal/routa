@@ -1487,9 +1487,15 @@ Can be in response to a request or proactively provided.`,
       "Get a specific artifact by ID",
       {
         artifactId: z.string().describe("Artifact ID"),
+        taskId: z.string().describe("Task ID the artifact belongs to"),
+        workspaceId: z.string().describe("Workspace ID the artifact belongs to"),
       },
       async (params) => {
-        const result = await this.tools.getArtifact(params.artifactId);
+        const result = await this.tools.getArtifact({
+          artifactId: params.artifactId,
+          taskId: params.taskId,
+          workspaceId: params.workspaceId,
+        });
         return this.toMcpResult(result);
       }
     );

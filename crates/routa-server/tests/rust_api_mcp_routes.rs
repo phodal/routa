@@ -296,6 +296,10 @@ async fn api_mcp_kanban_profile_filters_tools_list() {
         "update_task",
         "update_card",
         "move_card",
+        "create_note",
+        "provide_artifact",
+        "list_artifacts",
+        "get_artifact",
         "request_previous_lane_handoff",
         "submit_lane_handoff",
     ]
@@ -309,6 +313,16 @@ async fn api_mcp_kanban_profile_filters_tools_list() {
     assert!(
         names.contains(&"create_card") && names.contains(&"decompose_tasks"),
         "kanban profile should include planning tools, got: {names:?}"
+    );
+    assert!(
+        names.contains(&"provide_artifact")
+            && names.contains(&"list_artifacts")
+            && names.contains(&"get_artifact"),
+        "kanban profile should include artifact evidence tools, got: {names:?}"
+    );
+    assert!(
+        !names.contains(&"capture_screenshot"),
+        "kanban planning profile should not expose screenshot capture by default, got: {names:?}"
     );
 }
 

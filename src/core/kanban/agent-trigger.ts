@@ -16,6 +16,7 @@ import type { TaskLaneSession } from "../models/task";
 import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
 import { getLatestLaneSessionForColumn, getPreviousLaneRun } from "./task-lane-history";
 import type { KanbanAutomationStep, KanbanTransport } from "../models/kanban";
+import type { McpServerProfile } from "../mcp/mcp-server-profiles";
 import type { FlowDiagnosisReport } from "./flow-ledger-types";
 import { formatFlowGuidanceForPrompt } from "./flow-ledger";
 import { buildKanbanTaskAdaptiveHarnessOptions } from "./task-adaptive";
@@ -31,6 +32,19 @@ export interface TaskPromptSummaryContext {
   evidenceSummary?: TaskEvidenceSummary;
   storyReadiness?: TaskStoryReadiness;
   investValidation?: TaskInvestValidation;
+}
+
+export function resolveKanbanAutomationMcpProfile(
+  task: Task,
+  boardColumns: KanbanColumn[] = [],
+  summaryContext?: TaskPromptSummaryContext,
+): McpServerProfile | undefined {
+  const transitionArtifacts = resolveKanbanTransitionArtifacts(boardColumns, task.columnId ?? "backlog");
+  const hasArtifactGate = transitionArtifacts.currentRequiredArtifacts.length > 0
+    || transitionArtifacts.nextRequiredArtifacts.length > 0;
+  const hasMissingArtifacts = (summaryContext?.evidenceSummary?.artifact.missingRequired.length ?? 0) > 0;
+
+  return hasArtifactGate || hasMissingArtifacts ? "kanban-planning" : undefined;
 }
 
 function formatHandoffRequestType(
@@ -619,6 +633,11 @@ async function triggerAcpTaskAgent(params: {
   const sessionLabel = params.task.assignedSpecialistName
     ?? params.task.assignedSpecialistId
     ?? role;
+  const mcpProfile = resolveKanbanAutomationMcpProfile(
+    params.task,
+    params.boardColumns,
+    params.summaryContext,
+  );
 
   const newSessionResponse = await fetch(`${params.origin}/api/acp`, {
     method: "POST",
@@ -633,6 +652,7 @@ async function triggerAcpTaskAgent(params: {
         provider,
         role,
         toolMode: "full",
+        mcpProfile,
         workspaceId: params.workspaceId,
         specialistId: params.task.assignedSpecialistId,
         specialistLocale: params.specialistLocale,
