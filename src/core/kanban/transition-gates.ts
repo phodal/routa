@@ -81,7 +81,15 @@ export function evaluateKanbanTransitionGates(
   targetColumn: Pick<KanbanColumn, "id" | "name" | "automation"> | undefined,
 ): KanbanTransitionGateResult {
   const automation = targetColumn?.automation;
-  if (!automation?.enabled) {
+  const hasGateConfig = Boolean(
+    automation?.gateMode
+      || (automation?.requiredChecklist?.length ?? 0) > 0
+      || automation?.requiredHumanApproval
+      || automation?.validatorCommand?.trim(),
+  );
+  const gateEnabled = automation?.enabled ?? hasGateConfig;
+
+  if (!gateEnabled) {
     return {
       mode: "blocking",
       passed: true,
@@ -89,7 +97,7 @@ export function evaluateKanbanTransitionGates(
       issues: [],
     };
   }
-  const mode = automation.gateMode === "warning" ? "warning" : "blocking";
+  const mode = automation?.gateMode === "warning" ? "warning" : "blocking";
   const issues: KanbanTransitionGateIssue[] = [];
 
   const requiredChecklist = (automation?.requiredChecklist ?? [])
