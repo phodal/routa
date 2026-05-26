@@ -121,6 +121,32 @@ describe("resolveWorkspaceAgentConfig", () => {
       else process.env.WORKSPACE_AGENT_PROVIDER = originalProvider;
     }
   });
+
+  it("accepts minimax as a workspace agent provider", () => {
+    const config = resolveWorkspaceAgentConfig({
+      provider: "minimax",
+      modelId: "MiniMax-M2.7",
+    });
+    expect(config.provider).toBe("minimax");
+    expect(config.modelId).toBe("MiniMax-M2.7");
+  });
+
+  it("reads minimax provider from environment", () => {
+    const originalProvider = process.env.WORKSPACE_AGENT_PROVIDER;
+    const originalModel = process.env.WORKSPACE_AGENT_MODEL;
+    try {
+      process.env.WORKSPACE_AGENT_PROVIDER = "minimax";
+      process.env.WORKSPACE_AGENT_MODEL = "MiniMax-M2.7-highspeed";
+      const config = resolveWorkspaceAgentConfig();
+      expect(config.provider).toBe("minimax");
+      expect(config.modelId).toBe("MiniMax-M2.7-highspeed");
+    } finally {
+      if (originalProvider === undefined) delete process.env.WORKSPACE_AGENT_PROVIDER;
+      else process.env.WORKSPACE_AGENT_PROVIDER = originalProvider;
+      if (originalModel === undefined) delete process.env.WORKSPACE_AGENT_MODEL;
+      else process.env.WORKSPACE_AGENT_MODEL = originalModel;
+    }
+  });
 });
 
 // ─── Provider Adapter Integration ────────────────────────────────────────────

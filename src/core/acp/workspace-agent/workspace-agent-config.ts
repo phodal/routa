@@ -7,7 +7,7 @@
 
 import type { LanguageModel } from "ai";
 
-export type WorkspaceAgentProvider = "anthropic" | "openai" | "zhipu";
+export type WorkspaceAgentProvider = "anthropic" | "openai" | "zhipu" | "minimax";
 
 export interface WorkspaceAgentConfig {
   /** Model identifier, e.g. "claude-sonnet-4-20250514" or "gpt-4o" */
@@ -37,7 +37,7 @@ const DEFAULTS: WorkspaceAgentConfig = {
  * Resolve configuration from environment variables, merged with explicit overrides.
  *
  * Environment variables:
- *   WORKSPACE_AGENT_PROVIDER  — "anthropic" | "openai"
+ *   WORKSPACE_AGENT_PROVIDER  — "anthropic" | "openai" | "zhipu" | "minimax"
  *   WORKSPACE_AGENT_MODEL     — model identifier
  *   WORKSPACE_AGENT_MAX_STEPS — max agentic loop steps
  */
@@ -91,6 +91,20 @@ export async function createLanguageModel(config: WorkspaceAgentConfig): Promise
       const provider = createZhipu({
         apiKey: process.env.ZHIPU_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN,
         ...(process.env.ZHIPU_BASE_URL && { baseURL: process.env.ZHIPU_BASE_URL }),
+      });
+      return provider(config.modelId);
+    }
+    case "minimax": {
+      const { createAnthropic } = await import("@ai-sdk/anthropic");
+      // MiniMax uses Anthropic-compatible API. Default base URL is the overseas endpoint.
+      // @ai-sdk/anthropic appends /messages to baseURL, so the configured URL must end with /v1.
+      let baseURL = process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/anthropic";
+      if (!baseURL.endsWith("/v1")) {
+        baseURL = `${baseURL.replace(/\/+$/, "")}/v1`;
+      }
+      const provider = createAnthropic({
+        apiKey: process.env.MINIMAX_API_KEY,
+        baseURL,
       });
       return provider(config.modelId);
     }

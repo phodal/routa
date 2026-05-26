@@ -84,6 +84,15 @@ export const API_BASED_PROVIDERS: ApiBasedProvider[] = [
     envKeyName: 'DEEPSEEK_API_KEY',
     status: 'requires_config',
   },
+  {
+    id: 'minimax-api',
+    name: 'MiniMax API',
+    description: 'MiniMax models via Anthropic-compatible API',
+    apiEndpoint: 'https://api.minimax.io/anthropic',
+    requiresApiKey: true,
+    envKeyName: 'MINIMAX_API_KEY',
+    status: 'requires_config',
+  },
 ];
 
 /**
@@ -141,6 +150,7 @@ To configure providers, add environment variables:
 - ANTHROPIC_API_KEY=sk-ant-...
 - GOOGLE_API_KEY=...
 - DEEPSEEK_API_KEY=sk-...
+- MINIMAX_API_KEY=... (for MiniMax)
 `.trim();
 }
 

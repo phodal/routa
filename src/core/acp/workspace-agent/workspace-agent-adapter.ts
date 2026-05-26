@@ -83,6 +83,10 @@ export class WorkspaceAgentAdapter {
       if (!process.env.OPENAI_API_KEY) {
         throw new Error("Workspace agent (openai) requires OPENAI_API_KEY");
       }
+    } else if (this.config.provider === "minimax") {
+      if (!process.env.MINIMAX_API_KEY) {
+        throw new Error("Workspace agent (minimax) requires MINIMAX_API_KEY");
+      }
     }
     this._alive = true;
     console.log(

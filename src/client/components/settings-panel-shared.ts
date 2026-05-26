@@ -178,6 +178,7 @@ export const settingsCardCls = "rounded-xl border border-gray-200 bg-white p-4 d
 
 export const BASE_URL_SUGGESTIONS = [
   "https://open.bigmodel.cn/api/anthropic",
+  "https://api.minimax.io/anthropic",
   "https://api.minimaxi.com/anthropic",
   "https://api.deepseek.com/anthropic",
   "https://api.moonshot.ai/anthropic",
