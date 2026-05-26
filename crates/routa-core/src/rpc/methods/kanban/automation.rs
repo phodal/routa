@@ -111,7 +111,6 @@ pub(super) fn ensure_required_task_fields_present(
 
 fn normalize_gate_token(value: &str) -> String {
     value
-        .trim()
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
