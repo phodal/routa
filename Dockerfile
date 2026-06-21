@@ -60,6 +60,12 @@ ENV ROUTA_DB_PATH=/app/data/routa.db
 RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 nextjs
 
+# git is required at runtime: the /api/clone route shells out to
+# `git clone`/`git pull`/`git fetch` via execSync. ca-certificates is
+# needed so git can verify TLS for https://github.com/... clone URLs.
+# (openssh is intentionally omitted — only HTTPS clone URLs are used.)
+RUN apk add --no-cache git ca-certificates
+
 # Standalone server + static assets
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
