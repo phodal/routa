@@ -6,6 +6,8 @@ Turn `crates/harness-monitor` from a repo-local observer into a run-centric oper
 
 This plan is intentionally not a full Harness Core roadmap. It focuses on the subset of capabilities that should evolve into `harness-monitor` first.
 
+**File-level implementation plan:** [harness-monitor-run-centric-implementation.md](./harness-monitor-run-centric-implementation.md)
+
 ## Why This Plan Exists
 
 The architecture draft in `/Users/phodal/Downloads/routa-harness-architecture-v1.md` makes a clear distinction:
