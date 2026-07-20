@@ -177,6 +177,7 @@ export const sectionHeadCls = "text-xs font-semibold text-gray-500 dark:text-gra
 export const settingsCardCls = "rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-[#1e2130]";
 
 export const BASE_URL_SUGGESTIONS = [
+  "https://api.atlascloud.ai/v1",
   "https://open.bigmodel.cn/api/anthropic",
   "https://api.minimax.io/anthropic",
   "https://api.minimaxi.com/anthropic",

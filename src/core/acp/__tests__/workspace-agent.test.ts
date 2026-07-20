@@ -131,6 +131,36 @@ describe("resolveWorkspaceAgentConfig", () => {
     expect(config.modelId).toBe("MiniMax-M2.7");
   });
 
+  it("accepts Atlas Cloud as a workspace agent provider", () => {
+    const config = resolveWorkspaceAgentConfig({
+      provider: "atlascloud",
+      modelId: "qwen/qwen3.5-flash",
+      baseUrl: "https://api.atlascloud.ai/v1",
+      apiKey: "atlas-test-key",
+    });
+    expect(config.provider).toBe("atlascloud");
+    expect(config.modelId).toBe("qwen/qwen3.5-flash");
+    expect(config.baseUrl).toBe("https://api.atlascloud.ai/v1");
+    expect(config.apiKey).toBe("atlas-test-key");
+  });
+
+  it("reads Atlas Cloud provider from environment", () => {
+    const originalProvider = process.env.WORKSPACE_AGENT_PROVIDER;
+    const originalModel = process.env.WORKSPACE_AGENT_MODEL;
+    try {
+      process.env.WORKSPACE_AGENT_PROVIDER = "atlascloud";
+      process.env.WORKSPACE_AGENT_MODEL = "deepseek-ai/deepseek-v4-pro";
+      const config = resolveWorkspaceAgentConfig();
+      expect(config.provider).toBe("atlascloud");
+      expect(config.modelId).toBe("deepseek-ai/deepseek-v4-pro");
+    } finally {
+      if (originalProvider === undefined) delete process.env.WORKSPACE_AGENT_PROVIDER;
+      else process.env.WORKSPACE_AGENT_PROVIDER = originalProvider;
+      if (originalModel === undefined) delete process.env.WORKSPACE_AGENT_MODEL;
+      else process.env.WORKSPACE_AGENT_MODEL = originalModel;
+    }
+  });
+
   it("reads minimax provider from environment", () => {
     const originalProvider = process.env.WORKSPACE_AGENT_PROVIDER;
     const originalModel = process.env.WORKSPACE_AGENT_MODEL;

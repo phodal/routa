@@ -58,6 +58,15 @@ export const API_BASED_PROVIDERS: ApiBasedProvider[] = [
     status: 'requires_config',
   },
   {
+    id: 'atlascloud-api',
+    name: 'Atlas Cloud API',
+    description: 'Atlas Cloud OpenAI-compatible models via API',
+    apiEndpoint: 'https://api.atlascloud.ai/v1',
+    requiresApiKey: true,
+    envKeyName: 'ATLASCLOUD_API_KEY',
+    status: 'requires_config',
+  },
+  {
     id: 'anthropic-api',
     name: 'Anthropic API',
     description: 'Claude models via API',
@@ -146,6 +155,7 @@ This is because:
 
 To configure providers, add environment variables:
 - OPENCODE_SERVER_URL=http://your-server:4096 (for OpenCode SDK)
+- ATLASCLOUD_API_KEY=your-atlascloud-api-key (for Atlas Cloud OpenAI-compatible models)
 - OPENAI_API_KEY=sk-...
 - ANTHROPIC_API_KEY=sk-ant-...
 - GOOGLE_API_KEY=...
@@ -191,4 +201,3 @@ export function getProviderConfigInstructions(providerId: string): string | null
 
   return null;
 }
-

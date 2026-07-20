@@ -7,7 +7,7 @@
 
 import type { LanguageModel } from "ai";
 
-export type WorkspaceAgentProvider = "anthropic" | "openai" | "zhipu" | "minimax";
+export type WorkspaceAgentProvider = "anthropic" | "openai" | "zhipu" | "minimax" | "atlascloud";
 
 export interface WorkspaceAgentConfig {
   /** Model identifier, e.g. "claude-sonnet-4-20250514" or "gpt-4o" */
@@ -22,6 +22,10 @@ export interface WorkspaceAgentConfig {
   totalTimeoutMs: number;
   /** Max tokens for generation */
   maxTokens: number;
+  /** Optional per-session API base URL override */
+  baseUrl?: string;
+  /** Optional per-session API key override */
+  apiKey?: string;
 }
 
 const DEFAULTS: WorkspaceAgentConfig = {
@@ -37,7 +41,7 @@ const DEFAULTS: WorkspaceAgentConfig = {
  * Resolve configuration from environment variables, merged with explicit overrides.
  *
  * Environment variables:
- *   WORKSPACE_AGENT_PROVIDER  — "anthropic" | "openai" | "zhipu" | "minimax"
+ *   WORKSPACE_AGENT_PROVIDER  — "anthropic" | "openai" | "zhipu" | "minimax" | "atlascloud"
  *   WORKSPACE_AGENT_MODEL     — model identifier
  *   WORKSPACE_AGENT_MAX_STEPS — max agentic loop steps
  */
@@ -65,7 +69,7 @@ export async function createLanguageModel(config: WorkspaceAgentConfig): Promise
   switch (config.provider) {
     case "anthropic": {
       const { createAnthropic } = await import("@ai-sdk/anthropic");
-      let baseURL = process.env.ANTHROPIC_BASE_URL;
+      let baseURL = config.baseUrl ?? process.env.ANTHROPIC_BASE_URL;
       // @ai-sdk/anthropic appends /messages to baseURL.
       // Third-party Anthropic-compatible endpoints (e.g. BigModel) need /v1/messages,
       // so append /v1 if the URL doesn't already end with it.
@@ -73,7 +77,7 @@ export async function createLanguageModel(config: WorkspaceAgentConfig): Promise
         baseURL = `${baseURL.replace(/\/+$/, "")}/v1`;
       }
       const provider = createAnthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN,
+        apiKey: config.apiKey ?? process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN,
         ...(baseURL && { baseURL }),
       });
       return provider(config.modelId);
@@ -81,16 +85,32 @@ export async function createLanguageModel(config: WorkspaceAgentConfig): Promise
     case "openai": {
       const { createOpenAI } = await import("@ai-sdk/openai");
       const provider = createOpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-        ...(process.env.OPENAI_BASE_URL && { baseURL: process.env.OPENAI_BASE_URL }),
+        apiKey: config.apiKey ?? process.env.OPENAI_API_KEY,
+        ...((config.baseUrl ?? process.env.OPENAI_BASE_URL) && {
+          baseURL: config.baseUrl ?? process.env.OPENAI_BASE_URL,
+        }),
+      });
+      return provider(config.modelId);
+    }
+    case "atlascloud": {
+      const { createOpenAI } = await import("@ai-sdk/openai");
+      const provider = createOpenAI({
+        apiKey: config.apiKey ?? process.env.ATLASCLOUD_API_KEY ?? process.env.ATLAS_CLOUD_API_KEY,
+        baseURL:
+          config.baseUrl ??
+          process.env.ATLASCLOUD_API_BASE ??
+          process.env.ATLAS_CLOUD_API_BASE ??
+          "https://api.atlascloud.ai/v1",
       });
       return provider(config.modelId);
     }
     case "zhipu": {
       const { createZhipu } = await import("zhipu-ai-provider");
       const provider = createZhipu({
-        apiKey: process.env.ZHIPU_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN,
-        ...(process.env.ZHIPU_BASE_URL && { baseURL: process.env.ZHIPU_BASE_URL }),
+        apiKey: config.apiKey ?? process.env.ZHIPU_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN,
+        ...((config.baseUrl ?? process.env.ZHIPU_BASE_URL) && {
+          baseURL: config.baseUrl ?? process.env.ZHIPU_BASE_URL,
+        }),
       });
       return provider(config.modelId);
     }
@@ -98,12 +118,12 @@ export async function createLanguageModel(config: WorkspaceAgentConfig): Promise
       const { createAnthropic } = await import("@ai-sdk/anthropic");
       // MiniMax uses Anthropic-compatible API. Default base URL is the overseas endpoint.
       // @ai-sdk/anthropic appends /messages to baseURL, so the configured URL must end with /v1.
-      let baseURL = process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/anthropic";
+      let baseURL = config.baseUrl ?? process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/anthropic";
       if (!baseURL.endsWith("/v1")) {
         baseURL = `${baseURL.replace(/\/+$/, "")}/v1`;
       }
       const provider = createAnthropic({
-        apiKey: process.env.MINIMAX_API_KEY,
+        apiKey: config.apiKey ?? process.env.MINIMAX_API_KEY,
         baseURL,
       });
       return provider(config.modelId);

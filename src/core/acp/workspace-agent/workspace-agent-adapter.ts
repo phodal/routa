@@ -80,11 +80,15 @@ export class WorkspaceAgentAdapter {
         throw new Error("Workspace agent (anthropic) requires ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN");
       }
     } else if (this.config.provider === "openai") {
-      if (!process.env.OPENAI_API_KEY) {
+      if (!this.config.apiKey && !process.env.OPENAI_API_KEY) {
         throw new Error("Workspace agent (openai) requires OPENAI_API_KEY");
       }
+    } else if (this.config.provider === "atlascloud") {
+      if (!this.config.apiKey && !process.env.ATLASCLOUD_API_KEY && !process.env.ATLAS_CLOUD_API_KEY) {
+        throw new Error("Workspace agent (atlascloud) requires ATLASCLOUD_API_KEY");
+      }
     } else if (this.config.provider === "minimax") {
-      if (!process.env.MINIMAX_API_KEY) {
+      if (!this.config.apiKey && !process.env.MINIMAX_API_KEY) {
         throw new Error("Workspace agent (minimax) requires MINIMAX_API_KEY");
       }
     }
