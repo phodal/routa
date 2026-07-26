@@ -1397,6 +1397,17 @@ mod tests {
     }
 
     #[test]
+    fn static_kimi_preset_uses_acp_subcommand() {
+        let presets = get_presets();
+        let kimi = presets
+            .iter()
+            .find(|preset| preset.id == "kimi")
+            .expect("kimi preset");
+        assert_eq!(kimi.command, "kimi");
+        assert_eq!(kimi.args, vec!["acp".to_string()]);
+    }
+
+    #[test]
     fn static_presets_include_qoder() {
         let presets = get_presets();
         let qoder = presets

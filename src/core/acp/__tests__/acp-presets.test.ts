@@ -142,6 +142,10 @@ describe("acp-presets", () => {
       preferredTier: ModelTier.SMART,
       supportedRoles: [AgentRole.CRAFTER, AgentRole.DEVELOPER],
     });
+    expect(getPresetById("kimi")).toMatchObject({
+      command: "kimi",
+      args: ["acp"],
+    });
     expect(getDefaultPreset().id).toBe("opencode");
     expect(getStandardPresets().every((preset) => !preset.nonStandardApi)).toBe(true);
     expect(ACP_AGENT_PRESETS.some((preset) => preset.id === "claude" && preset.nonStandardApi)).toBe(true);

@@ -101,6 +101,10 @@ metrics:
   - status: `TODO`
   - required: 列表/状态转换边界、冲突校验（如同 ID/非法状态）
   - evidence:
+- [x] ACP provider presets
+  - status: `VERIFIED`
+  - required: Kimi must launch ACP mode through the `kimi acp` subcommand.
+  - evidence: `src/core/acp/__tests__/acp-presets.test.ts`, `crates/routa-core/src/acp/mod.rs`
 
 ### 单元测试（`routa-server`）
 - [ ] error contract helpers
