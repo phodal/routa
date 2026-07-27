@@ -61,6 +61,11 @@ export function resolveWorkspaceAgentConfig(
   };
 }
 
+export function normalizeAnthropicBaseUrl(baseUrl: string): string {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  return normalizedBaseUrl.endsWith("/v1") ? normalizedBaseUrl : `${normalizedBaseUrl}/v1`;
+}
+
 /**
  * Create a Vercel AI SDK LanguageModel from config.
  * Dynamically imports the provider package to avoid bundling both when only one is used.
@@ -73,8 +78,8 @@ export async function createLanguageModel(config: WorkspaceAgentConfig): Promise
       // @ai-sdk/anthropic appends /messages to baseURL.
       // Third-party Anthropic-compatible endpoints (e.g. BigModel) need /v1/messages,
       // so append /v1 if the URL doesn't already end with it.
-      if (baseURL && !baseURL.endsWith("/v1")) {
-        baseURL = `${baseURL.replace(/\/+$/, "")}/v1`;
+      if (baseURL) {
+        baseURL = normalizeAnthropicBaseUrl(baseURL);
       }
       const provider = createAnthropic({
         apiKey: config.apiKey ?? process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN,
@@ -119,9 +124,7 @@ export async function createLanguageModel(config: WorkspaceAgentConfig): Promise
       // MiniMax uses Anthropic-compatible API. Default base URL is the overseas endpoint.
       // @ai-sdk/anthropic appends /messages to baseURL, so the configured URL must end with /v1.
       let baseURL = config.baseUrl ?? process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/anthropic";
-      if (!baseURL.endsWith("/v1")) {
-        baseURL = `${baseURL.replace(/\/+$/, "")}/v1`;
-      }
+      baseURL = normalizeAnthropicBaseUrl(baseURL);
       const provider = createAnthropic({
         apiKey: config.apiKey ?? process.env.MINIMAX_API_KEY,
         baseURL,

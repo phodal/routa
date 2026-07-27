@@ -76,7 +76,7 @@ export class WorkspaceAgentAdapter {
 
   async connect(): Promise<void> {
     if (this.config.provider === "anthropic") {
-      if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
+      if (!this.config.apiKey && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
         throw new Error("Workspace agent (anthropic) requires ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN");
       }
     } else if (this.config.provider === "openai") {

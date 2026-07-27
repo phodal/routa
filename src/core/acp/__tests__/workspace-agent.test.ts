@@ -6,7 +6,11 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { WorkspaceAgentStateMachine } from "../workspace-agent/workspace-agent-state";
-import { resolveWorkspaceAgentConfig } from "../workspace-agent/workspace-agent-config";
+import {
+  normalizeAnthropicBaseUrl,
+  resolveWorkspaceAgentConfig,
+} from "../workspace-agent/workspace-agent-config";
+import { WorkspaceAgentAdapter } from "../workspace-agent/workspace-agent-adapter";
 import { createAgentManagementTools } from "../workspace-agent/workspace-agent-tools";
 import { getProviderAdapter, clearAdapterCache } from "../provider-adapter/index";
 import { AgentEventBridge } from "../agent-event-bridge/agent-event-bridge";
@@ -180,6 +184,62 @@ describe("resolveWorkspaceAgentConfig", () => {
 });
 
 // ─── Provider Adapter Integration ────────────────────────────────────────────
+
+describe("normalizeAnthropicBaseUrl", () => {
+  it.each([
+    ["https://api.example.com", "https://api.example.com/v1"],
+    ["https://api.example.com/", "https://api.example.com/v1"],
+    ["https://api.example.com/v1", "https://api.example.com/v1"],
+    ["https://api.example.com/v1/", "https://api.example.com/v1"],
+  ])("normalizes %s without duplicating the version path", (baseUrl, expected) => {
+    expect(normalizeAnthropicBaseUrl(baseUrl)).toBe(expected);
+  });
+});
+
+describe("WorkspaceAgentAdapter credentials", () => {
+  it("accepts a per-session Anthropic API key", async () => {
+    const originalApiKey = process.env.ANTHROPIC_API_KEY;
+    const originalAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
+
+    try {
+      delete process.env.ANTHROPIC_API_KEY;
+      delete process.env.ANTHROPIC_AUTH_TOKEN;
+      const adapter = new WorkspaceAgentAdapter("/tmp", vi.fn(), {
+        config: { provider: "anthropic", apiKey: "alias-api-key" },
+      });
+
+      await expect(adapter.connect()).resolves.toBeUndefined();
+      expect(adapter.alive).toBe(true);
+    } finally {
+      if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = originalApiKey;
+      if (originalAuthToken === undefined) delete process.env.ANTHROPIC_AUTH_TOKEN;
+      else process.env.ANTHROPIC_AUTH_TOKEN = originalAuthToken;
+    }
+  });
+
+  it("still rejects Anthropic sessions without any credentials", async () => {
+    const originalApiKey = process.env.ANTHROPIC_API_KEY;
+    const originalAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
+
+    try {
+      delete process.env.ANTHROPIC_API_KEY;
+      delete process.env.ANTHROPIC_AUTH_TOKEN;
+      const adapter = new WorkspaceAgentAdapter("/tmp", vi.fn(), {
+        config: { provider: "anthropic" },
+      });
+
+      await expect(adapter.connect()).rejects.toThrow(
+        "Workspace agent (anthropic) requires ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN",
+      );
+    } finally {
+      if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = originalApiKey;
+      if (originalAuthToken === undefined) delete process.env.ANTHROPIC_AUTH_TOKEN;
+      else process.env.ANTHROPIC_AUTH_TOKEN = originalAuthToken;
+    }
+  });
+});
 
 describe("WorkspaceAgentProviderAdapter", () => {
   beforeEach(() => {
