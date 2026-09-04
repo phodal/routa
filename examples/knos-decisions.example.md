@@ -5,8 +5,8 @@
 
 ## Decisions
 
-- **rule 1** - Desktop: Tauri app in `apps/desktop/` backed by Axum in `crates/routa-server/` _(source: CLAUDE.md)_
-- **rule 2** - `docs/ARCHITECTURE.md`: Canonical architecture boundaries, domain model, protocol stack, and cross-backend invariants. _(source: CLAUDE.md)_
+- Desktop: Tauri app in `apps/desktop/` backed by Axum in `crates/routa-server/` _(source: CLAUDE.md)_
+- `docs/ARCHITECTURE.md`: Canonical architecture boundaries, domain model, protocol stack, and cross-backend invariants. _(source: CLAUDE.md)_
 
 ## Being worked on right now
 
