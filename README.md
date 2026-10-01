@@ -251,6 +251,7 @@ npm run lint
 - [Feature Tree](docs/product-specs/FEATURE_TREE.md)
 - [Fitness Rules](docs/fitness/README.md)
 - [Harness Monitor Architecture](docs/harness/harness-monitor-run-centric-operator-model.md)
+- [Upstream Architecture Specs (MySpec)](https://myspec.dev?utm_source=github&utm_medium=referral&utm_campaign=phodal-routa)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 
