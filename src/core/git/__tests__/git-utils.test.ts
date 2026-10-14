@@ -22,6 +22,7 @@ vi.mock("@/core/utils/safe-exec", () => ({
 
 const {
   getRepoChanges,
+  invalidateRepoChangesCache,
   parseGitStatusPorcelain,
   isGitHubUrl,
   parseGitHubUrl,
@@ -42,13 +43,13 @@ describe("parseGitStatusPorcelain", () => {
 
   it("preserves the first character of filenames in porcelain rows", () => {
     expect(parseGitStatusPorcelain(" M package-lock.json")).toEqual([
-      { path: "package-lock.json", status: "modified" },
+      { path: "package-lock.json", status: "modified", unstaged: true },
     ]);
   });
 
   it("parses untracked files without rewriting their path", () => {
     expect(parseGitStatusPorcelain("?? package-lock.json")).toEqual([
-      { path: "package-lock.json", status: "untracked" },
+      { path: "package-lock.json", status: "untracked", unstaged: true },
     ]);
   });
 
@@ -58,9 +59,21 @@ describe("parseGitStatusPorcelain", () => {
         "R  src/old.ts -> src/new.ts\nC  src/base.ts -> src/copied.ts\nUU src/conflict.ts\n!! dist/out.js\n",
       ),
     ).toEqual([
-      { path: "src/new.ts", previousPath: "src/old.ts", status: "renamed" },
-      { path: "src/copied.ts", previousPath: "src/base.ts", status: "copied" },
-      { path: "src/conflict.ts", status: "conflicted" },
+      { path: "src/new.ts", previousPath: "src/old.ts", status: "renamed", staged: true },
+      { path: "src/copied.ts", previousPath: "src/base.ts", status: "copied", staged: true },
+      { path: "src/conflict.ts", status: "conflicted", staged: true, unstaged: true },
+    ]);
+  });
+
+  it("marks index and worktree state separately (#570)", () => {
+    expect(
+      parseGitStatusPorcelain("M  staged.ts\n M unstaged.ts\nMM both.ts\nA  added.ts\n D gone.ts\n"),
+    ).toEqual([
+      { path: "staged.ts", status: "modified", staged: true },
+      { path: "unstaged.ts", status: "modified", unstaged: true },
+      { path: "both.ts", status: "modified", staged: true, unstaged: true },
+      { path: "added.ts", status: "added", staged: true },
+      { path: "gone.ts", status: "deleted", unstaged: true },
     ]);
   });
 
@@ -89,6 +102,33 @@ describe("parseGitStatusPorcelain", () => {
       "package-lock.json",
       "package.json",
     ]);
+  });
+
+  it("returns fresh status after invalidateRepoChangesCache (#570)", () => {
+    let porcelain = " M a.ts\n";
+    gitExecMock.mockImplementation((args: string[]) => {
+      const command = formatGitArgs(args);
+      if (command === "git rev-parse --abbrev-ref HEAD") return "main\n";
+      if (command === "git status --porcelain -uall") return porcelain;
+      if (command === "git rev-list --left-right --count HEAD...@{upstream}") {
+        throw new Error("no upstream");
+      }
+      if (command.startsWith("git --no-pager diff")) return "";
+      if (command === "git rev-parse --git-dir") return ".git\n";
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    const repo = "/tmp/repo-cache-570";
+    expect(getRepoChanges(repo).files).toMatchObject([{ path: "a.ts", status: "modified", unstaged: true }]);
+
+    porcelain = "M  a.ts\n";
+    // Still within the cache window: stale result.
+    expect(getRepoChanges(repo).files[0]?.staged).toBeUndefined();
+
+    invalidateRepoChangesCache(repo);
+    const fresh = getRepoChanges(repo).files;
+    expect(fresh).toMatchObject([{ path: "a.ts", status: "modified", staged: true }]);
+    expect(fresh[0]?.unstaged).toBeUndefined();
   });
 });
 

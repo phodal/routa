@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useTranslation } from "@/i18n";
 import type { KanbanRepoChanges, KanbanFileChangeItem, KanbanTaskChanges, KanbanCommitInfo } from "../kanban-file-changes-types";
+import { splitFileChangesByIndex } from "../kanban-file-changes-types";
 import { KanbanUnstagedSection } from "./kanban-unstaged-section";
 import { KanbanStagedSection } from "./kanban-staged-section";
 import { KanbanCommitsSection } from "./kanban-commits-section";
@@ -92,10 +93,7 @@ export function KanbanEnhancedFileChangesPanel({
   const { unstagedFiles, stagedFiles } = useMemo(() => {
     // Embedded mode (card detail): use changes
     if (embedded && changes) {
-      return {
-        unstagedFiles: changes.files || [],
-        stagedFiles: [],
-      };
+      return splitFileChangesByIndex(changes.files || []);
     }
 
     // Sidebar mode: use repos
@@ -111,11 +109,8 @@ export function KanbanEnhancedFileChangesPanel({
       };
     }
 
-    // Otherwise, treat all files as unstaged (backward compatibility)
-    return {
-      unstagedFiles: activeRepo.files || [],
-      stagedFiles: [],
-    };
+    // Otherwise, split the flat list using per-file index flags (#570)
+    return splitFileChangesByIndex(activeRepo.files || []);
   }, [embedded, changes, activeRepo]);
 
   // State for file selection

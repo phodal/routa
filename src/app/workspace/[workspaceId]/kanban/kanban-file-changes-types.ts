@@ -32,6 +32,8 @@ export interface KanbanFileChangeItem {
   timestamp?: number;
   /** Whether the file is staged in the Git index */
   staged?: boolean;
+  /** Whether the working tree has changes for this file that are not staged */
+  unstaged?: boolean;
   /** UI state: whether the file is selected for batch operations */
   selected?: boolean;
 }
@@ -182,4 +184,24 @@ export interface GitOperationResponse {
   error?: string;
   /** Updated repo changes after the operation */
   repoChanges?: KanbanRepoChanges;
+}
+
+/**
+ * Split a flat file-change list into unstaged and staged buckets using the
+ * per-file Git index flags. A file changed both in the index and the worktree
+ * (e.g. porcelain "MM") appears in both lists. Payloads without any index
+ * flags (older servers, task-level changes) are treated as all unstaged.
+ */
+export function splitFileChangesByIndex(files: KanbanFileChangeItem[]): {
+  unstagedFiles: KanbanFileChangeItem[];
+  stagedFiles: KanbanFileChangeItem[];
+} {
+  const hasIndexFlags = files.some((file) => file.staged !== undefined || file.unstaged !== undefined);
+  if (!hasIndexFlags) {
+    return { unstagedFiles: files, stagedFiles: [] };
+  }
+  return {
+    unstagedFiles: files.filter((file) => file.unstaged || !file.staged),
+    stagedFiles: files.filter((file) => file.staged),
+  };
 }

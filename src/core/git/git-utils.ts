@@ -151,6 +151,10 @@ export interface GitFileChange {
   previousPath?: string;
   additions?: number;
   deletions?: number;
+  /** True when the Git index (staging area) holds a change for this path. */
+  staged?: boolean;
+  /** True when the working tree holds a change not yet staged (including untracked). */
+  unstaged?: boolean;
 }
 
 export interface RepoChanges {
@@ -165,6 +169,17 @@ const repoChangesCache = new LRUCache<string, RepoChanges>({
   max: 100, // Cache up to 100 different repo paths
   ttl: 5000, // 5 seconds - balances freshness with performance
 });
+
+/**
+ * Drop cached getRepoChanges() results for a repository so the next read
+ * reflects index/worktree mutations (stage, unstage, discard, commit).
+ */
+export function invalidateRepoChangesCache(repoPath: string): void {
+  const prefix = `${repoPath}:`;
+  for (const key of [...repoChangesCache.keys()]) {
+    if (key.startsWith(prefix)) repoChangesCache.delete(key);
+  }
+}
 
 export interface RepoFileDiff {
   path: string;
@@ -378,6 +393,15 @@ function mapPorcelainStatus(code: string): FileChangeStatus {
   return "modified";
 }
 
+function porcelainStageFlags(code: string): Pick<GitFileChange, "staged" | "unstaged"> {
+  if (code === "??") return { unstaged: true };
+  const [indexStatus = " ", worktreeStatus = " "] = code.split("");
+  return {
+    ...(indexStatus !== " " ? { staged: true } : {}),
+    ...(worktreeStatus !== " " ? { unstaged: true } : {}),
+  };
+}
+
 export function parseGitStatusPorcelain(output: string): GitFileChange[] {
   return output
     .split("\n")
@@ -391,15 +415,16 @@ export function parseGitStatusPorcelain(output: string): GitFileChange[] {
 
       const rawPath = line.slice(3);
       const status = mapPorcelainStatus(code);
+      const stageFlags = porcelainStageFlags(code);
 
       if ((status === "renamed" || status === "copied") && rawPath.includes(" -> ")) {
         const [previousPath, nextPath] = rawPath.split(" -> ");
         if (previousPath && nextPath) {
-          return [{ path: nextPath, previousPath, status }];
+          return [{ path: nextPath, previousPath, status, ...stageFlags }];
         }
       }
 
-      return [{ path: rawPath, status }];
+      return [{ path: rawPath, status, ...stageFlags }];
     });
 }
 
