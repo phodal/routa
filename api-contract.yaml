@@ -1618,13 +1618,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "200":
-          description: Deleted
+          description: |
+            Deleted. Bulk delete (by workspaceId) reports a count: the Rust runtime returns it as `deleted`,
+            Next.js returns `deleted: true` plus `deletedCount`. Single delete (by taskId) returns `deleted: true`.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   deleted:
+                    oneOf:
+                      - type: integer
+                      - type: boolean
+                  deletedCount:
                     type: integer
 
   /api/tasks/{id}:

@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
   const system = getRoutaSystem();
   const id = request.nextUrl.searchParams.get("id");
   const summary = request.nextUrl.searchParams.has("summary");
-  const workspaceId = request.nextUrl.searchParams.get("workspaceId");
+  // Blank values are treated as missing (same as the Rust runtime).
+  const workspaceId = request.nextUrl.searchParams.get("workspaceId")?.trim() || null;
 
   if (!workspaceId && !id) {
     return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
@@ -49,14 +50,15 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const system = getRoutaSystem();
 
-  if (!body.workspaceId) {
+  const workspaceId = typeof body.workspaceId === "string" ? body.workspaceId.trim() : "";
+  if (!workspaceId) {
     return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
   }
 
   const result = await system.tools.createAgent({
     name: body.name,
     role: body.role,
-    workspaceId: body.workspaceId,
+    workspaceId,
     parentId: body.parentId,
     modelTier: body.modelTier,
   });

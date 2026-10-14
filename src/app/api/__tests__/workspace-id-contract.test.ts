@@ -115,6 +115,24 @@ describe("workspaceId contract (#576)", () => {
     }
   });
 
+  it("Next.js handlers treat blank workspaceId as missing", async () => {
+    const agents = await import("../agents/route");
+    const notes = await import("../notes/route");
+    const blank = "?workspaceId=%20%20";
+
+    const responses = await Promise.all([
+      agents.GET(new NextRequest(url("/api/agents", blank))),
+      agents.POST(jsonReq("/api/agents", "POST", { name: "A", role: "DEVELOPER", workspaceId: "  " })),
+      notes.GET(new NextRequest(url("/api/notes", blank))),
+      notes.POST(jsonReq("/api/notes", "POST", { title: "n", workspaceId: " " })),
+      notes.DELETE(new NextRequest(url("/api/notes", `${blank}&noteId=n1`), { method: "DELETE" })),
+    ]);
+
+    for (const res of responses) {
+      expect(res.status).toBe(400);
+    }
+  });
+
   it("DELETE /api/tasks documents taskId-or-workspaceId and a 400", async () => {
     const op = contract.paths["/api/tasks"].delete;
     expect(op.parameters?.find((x) => x.name === "workspaceId")?.schema?.default).toBeUndefined();

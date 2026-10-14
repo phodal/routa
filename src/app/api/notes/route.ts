@@ -15,7 +15,7 @@ import { createNote, Note } from "@/core/models/note";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  const workspaceId = searchParams.get("workspaceId");
+  const workspaceId = searchParams.get("workspaceId")?.trim() || null;
   const type = searchParams.get("type") as "spec" | "task" | "general" | null;
   const noteId = searchParams.get("noteId");
   const sessionIdFilter = searchParams.get("sessionId");
@@ -110,12 +110,15 @@ export async function POST(request: NextRequest) {
     noteId,
     title,
     content,
-    workspaceId,
+    workspaceId: rawWorkspaceId,
     sessionId,
     type = "general",
     metadata,
     source: rawSource = "user",
   } = body;
+
+  // Blank values are treated as missing (same as the Rust runtime).
+  const workspaceId = typeof rawWorkspaceId === "string" ? rawWorkspaceId.trim() : "";
 
   // Validate source type
   const source = (["agent", "user", "system"].includes(rawSource) ? rawSource : "user") as "agent" | "user" | "system";
@@ -170,7 +173,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const noteId = searchParams.get("noteId");
-  const workspaceId = searchParams.get("workspaceId");
+  const workspaceId = searchParams.get("workspaceId")?.trim() || null;
 
   if (!noteId) {
     return NextResponse.json({ error: "noteId is required" }, { status: 400 });
