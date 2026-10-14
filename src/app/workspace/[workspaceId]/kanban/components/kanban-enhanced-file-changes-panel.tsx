@@ -92,8 +92,11 @@ export function KanbanEnhancedFileChangesPanel({
   // Separate files into unstaged and staged
   const { unstagedFiles, stagedFiles } = useMemo(() => {
     // Embedded mode (card detail): use changes
+    // Task changes may come from a task worktree, while Git actions here target
+    // the codebase repo, so keep the existing all-unstaged view and do not
+    // expose staged-only actions (unstage/commit) against the wrong repository.
     if (embedded && changes) {
-      return splitFileChangesByIndex(changes.files || []);
+      return { unstagedFiles: changes.files || [], stagedFiles: [] };
     }
 
     // Sidebar mode: use repos
@@ -154,10 +157,10 @@ export function KanbanEnhancedFileChangesPanel({
   }, [unstagedWithSelection, stageFiles]);
 
   const handleUnstageSelected = useCallback(async () => {
-    // A staged rename must restore both the destination and the source path.
+    // A staged rename must restore both paths; a copy leaves its source untouched.
     const selectedFiles = stagedWithSelection
       .filter((f) => f.selected)
-      .flatMap((f) => (f.previousPath ? [f.path, f.previousPath] : [f.path]));
+      .flatMap((f) => (f.status === "renamed" && f.previousPath ? [f.path, f.previousPath] : [f.path]));
     if (selectedFiles.length === 0) return;
 
     await unstageFiles(selectedFiles);
