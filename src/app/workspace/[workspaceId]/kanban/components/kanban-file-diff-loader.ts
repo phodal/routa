@@ -32,6 +32,9 @@ export async function loadKanbanFileDiff({
     if (file.previousPath) {
       params.set("previousPath", file.previousPath);
     }
+    if (staged) {
+      params.set("staged", "true");
+    }
     const response = await desktopAwareFetch(
       `/api/tasks/${encodeURIComponent(taskId)}/changes/file?${params.toString()}`,
       { cache: "no-store", signal: controller.signal }

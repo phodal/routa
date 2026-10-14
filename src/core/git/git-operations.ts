@@ -5,7 +5,7 @@
 
 import { exec as execCallback } from "node:child_process";
 import { promisify } from "node:util";
-import { isGitRepository, shellQuote } from "./git-utils";
+import { invalidateRepoChangesCache, isGitRepository, shellQuote } from "./git-utils";
 
 const exec = promisify(execCallback);
 
@@ -91,6 +91,10 @@ async function gitExec(command: string, repoPath: string): Promise<string> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Git operation failed: ${message}`, { cause: error });
+  } finally {
+    // Operations here mutate the index/worktree; drop the short-lived
+    // getRepoChanges() cache so the next refresh shows the new state (#570).
+    invalidateRepoChangesCache(repoPath);
   }
 }
 

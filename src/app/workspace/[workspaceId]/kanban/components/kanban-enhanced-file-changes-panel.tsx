@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useTranslation } from "@/i18n";
 import type { KanbanRepoChanges, KanbanFileChangeItem, KanbanTaskChanges, KanbanCommitInfo } from "../kanban-file-changes-types";
+import { fileSelectionKey, splitFileChangesByIndex } from "../kanban-file-changes-types";
 import { KanbanUnstagedSection } from "./kanban-unstaged-section";
 import { KanbanStagedSection } from "./kanban-staged-section";
 import { KanbanCommitsSection } from "./kanban-commits-section";
@@ -91,11 +92,11 @@ export function KanbanEnhancedFileChangesPanel({
   // Separate files into unstaged and staged
   const { unstagedFiles, stagedFiles } = useMemo(() => {
     // Embedded mode (card detail): use changes
+    // Task changes may come from a task worktree, while Git actions here target
+    // the codebase repo, so keep the existing all-unstaged view and do not
+    // expose staged-only actions (unstage/commit) against the wrong repository.
     if (embedded && changes) {
-      return {
-        unstagedFiles: changes.files || [],
-        stagedFiles: [],
-      };
+      return { unstagedFiles: changes.files || [], stagedFiles: [] };
     }
 
     // Sidebar mode: use repos
@@ -111,11 +112,8 @@ export function KanbanEnhancedFileChangesPanel({
       };
     }
 
-    // Otherwise, treat all files as unstaged (backward compatibility)
-    return {
-      unstagedFiles: activeRepo.files || [],
-      stagedFiles: [],
-    };
+    // Otherwise, split the flat list using per-file index flags (#570)
+    return splitFileChangesByIndex(activeRepo.files || []);
   }, [embedded, changes, activeRepo]);
 
   // State for file selection
@@ -124,7 +122,7 @@ export function KanbanEnhancedFileChangesPanel({
   const handleFileSelect = useCallback((file: KanbanFileChangeItem, selected: boolean) => {
     setFileSelections((prev) => ({
       ...prev,
-      [file.path]: selected,
+      [fileSelectionKey(file)]: selected,
     }));
   }, []);
 
@@ -132,7 +130,7 @@ export function KanbanEnhancedFileChangesPanel({
     setFileSelections((prev) => {
       const next = { ...prev };
       files.forEach((file) => {
-        next[file.path] = selected;
+        next[fileSelectionKey(file)] = selected;
       });
       return next;
     });
@@ -140,12 +138,12 @@ export function KanbanEnhancedFileChangesPanel({
 
   // Add selection state to files
   const unstagedWithSelection = useMemo(
-    () => unstagedFiles.map((f) => ({ ...f, selected: fileSelections[f.path] || false })),
+    () => unstagedFiles.map((f) => ({ ...f, selected: fileSelections[fileSelectionKey(f)] || false })),
     [unstagedFiles, fileSelections]
   );
 
   const stagedWithSelection = useMemo(
-    () => stagedFiles.map((f) => ({ ...f, selected: fileSelections[f.path] || false })),
+    () => stagedFiles.map((f) => ({ ...f, selected: fileSelections[fileSelectionKey(f)] || false })),
     [stagedFiles, fileSelections]
   );
 
@@ -159,7 +157,10 @@ export function KanbanEnhancedFileChangesPanel({
   }, [unstagedWithSelection, stageFiles]);
 
   const handleUnstageSelected = useCallback(async () => {
-    const selectedFiles = stagedWithSelection.filter((f) => f.selected).map((f) => f.path);
+    // A staged rename must restore both paths; a copy leaves its source untouched.
+    const selectedFiles = stagedWithSelection
+      .filter((f) => f.selected)
+      .flatMap((f) => (f.status === "renamed" && f.previousPath ? [f.path, f.previousPath] : [f.path]));
     if (selectedFiles.length === 0) return;
 
     await unstageFiles(selectedFiles);

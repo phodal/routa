@@ -151,6 +151,14 @@ export interface GitFileChange {
   previousPath?: string;
   additions?: number;
   deletions?: number;
+  /** True when the Git index (staging area) holds a change for this path. */
+  staged?: boolean;
+  /** True when the working tree holds a change not yet staged (including untracked). */
+  unstaged?: boolean;
+  /** Status of the index-side change (set when `staged`). */
+  stagedStatus?: FileChangeStatus;
+  /** Status of the working-tree-side change (set when `unstaged`). */
+  unstagedStatus?: FileChangeStatus;
 }
 
 export interface RepoChanges {
@@ -165,6 +173,17 @@ const repoChangesCache = new LRUCache<string, RepoChanges>({
   max: 100, // Cache up to 100 different repo paths
   ttl: 5000, // 5 seconds - balances freshness with performance
 });
+
+/**
+ * Drop cached getRepoChanges() results for a repository so the next read
+ * reflects index/worktree mutations (stage, unstage, discard, commit).
+ */
+export function invalidateRepoChangesCache(repoPath: string): void {
+  const prefix = `${repoPath}:`;
+  for (const key of [...repoChangesCache.keys()]) {
+    if (key.startsWith(prefix)) repoChangesCache.delete(key);
+  }
+}
 
 export interface RepoFileDiff {
   path: string;
@@ -378,6 +397,37 @@ function mapPorcelainStatus(code: string): FileChangeStatus {
   return "modified";
 }
 
+const PORCELAIN_SIDE_STATUS: Record<string, FileChangeStatus> = {
+  M: "modified",
+  A: "added",
+  D: "deleted",
+  R: "renamed",
+  C: "copied",
+  T: "typechange",
+};
+
+type StageFlags = Pick<GitFileChange, "staged" | "unstaged" | "stagedStatus" | "unstagedStatus">;
+
+function porcelainStageFlags(code: string): StageFlags {
+  if (code === "??") return { unstaged: true, unstagedStatus: "untracked" };
+  const [indexStatus = " ", worktreeStatus = " "] = code.split("");
+  // Unmerged entries (U*, *U, AA, DD) are neither staged nor ready to commit:
+  // surface them on the working-tree side only until the conflict is resolved.
+  if (indexStatus === "U" || worktreeStatus === "U" || code === "AA" || code === "DD") {
+    return { unstaged: true, unstagedStatus: "conflicted" };
+  }
+  const flags: StageFlags = {};
+  if (indexStatus !== " ") {
+    flags.staged = true;
+    flags.stagedStatus = PORCELAIN_SIDE_STATUS[indexStatus] ?? "modified";
+  }
+  if (worktreeStatus !== " ") {
+    flags.unstaged = true;
+    flags.unstagedStatus = PORCELAIN_SIDE_STATUS[worktreeStatus] ?? "modified";
+  }
+  return flags;
+}
+
 export function parseGitStatusPorcelain(output: string): GitFileChange[] {
   return output
     .split("\n")
@@ -391,15 +441,16 @@ export function parseGitStatusPorcelain(output: string): GitFileChange[] {
 
       const rawPath = line.slice(3);
       const status = mapPorcelainStatus(code);
+      const stageFlags = porcelainStageFlags(code);
 
       if ((status === "renamed" || status === "copied") && rawPath.includes(" -> ")) {
         const [previousPath, nextPath] = rawPath.split(" -> ");
         if (previousPath && nextPath) {
-          return [{ path: nextPath, previousPath, status }];
+          return [{ path: nextPath, previousPath, status, ...stageFlags }];
         }
       }
 
-      return [{ path: rawPath, status }];
+      return [{ path: rawPath, status, ...stageFlags }];
     });
 }
 
@@ -674,12 +725,22 @@ function getRepoFileLineStats(repoPath: string, file: GitFileChange): { addition
   return { additions: 0, deletions: 0 };
 }
 
-export function getRepoFileDiff(repoPath: string, file: GitFileChange): RepoFileDiff {
-  const patch = getFirstNonEmptyGitDiff(repoPath, [
-    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--", file.path],
-    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--cached", "--", file.path],
-    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "HEAD", "--", file.path],
-  ]);
+export function getRepoFileDiff(
+  repoPath: string,
+  file: GitFileChange,
+  options: { staged?: boolean } = {},
+): RepoFileDiff {
+  // Include the source path so Git can pair renames/copies instead of
+  // reporting the destination as a new file.
+  const pathspec = file.previousPath ? [file.previousPath, file.path] : [file.path];
+  const worktreeDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--", ...pathspec];
+  const indexDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--cached", "--", ...pathspec];
+  const headDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "HEAD", "--", ...pathspec];
+  // For the staged row of a partially staged file, show the index-side patch.
+  const patch = getFirstNonEmptyGitDiff(
+    repoPath,
+    options.staged ? [indexDiff, headDiff] : [worktreeDiff, indexDiff, headDiff],
+  );
 
   if (patch) {
     const counts = countDiffPatchLines(patch);

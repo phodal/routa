@@ -1379,6 +1379,18 @@ pub struct GitFileChange {
     pub status: FileChangeStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_path: Option<String>,
+    /// True when the Git index holds a change for this path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staged: Option<bool>,
+    /// True when the working tree holds an unstaged change (incl. untracked).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unstaged: Option<bool>,
+    /// Index-side status (set when `staged`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staged_status: Option<FileChangeStatus>,
+    /// Working-tree-side status (set when `unstaged`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unstaged_status: Option<FileChangeStatus>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1520,6 +1532,49 @@ fn map_porcelain_status(code: &str) -> FileChangeStatus {
     FileChangeStatus::Modified
 }
 
+fn porcelain_side_status(c: char) -> FileChangeStatus {
+    match c {
+        'A' => FileChangeStatus::Added,
+        'D' => FileChangeStatus::Deleted,
+        'R' => FileChangeStatus::Renamed,
+        'C' => FileChangeStatus::Copied,
+        'T' => FileChangeStatus::Typechange,
+        _ => FileChangeStatus::Modified,
+    }
+}
+
+/// Index/worktree flags for a porcelain code, mirroring the web runtime.
+/// Unmerged entries are reported on the working-tree side only.
+type StageFlags = (
+    Option<bool>,
+    Option<bool>,
+    Option<FileChangeStatus>,
+    Option<FileChangeStatus>,
+);
+
+fn porcelain_stage_flags(code: &str) -> StageFlags {
+    if code == "??" {
+        return (None, Some(true), None, Some(FileChangeStatus::Untracked));
+    }
+    let mut chars = code.chars();
+    let index_status = chars.next().unwrap_or(' ');
+    let worktree_status = chars.next().unwrap_or(' ');
+    if index_status == 'U' || worktree_status == 'U' || code == "AA" || code == "DD" {
+        return (None, Some(true), None, Some(FileChangeStatus::Conflicted));
+    }
+    let (staged, staged_status) = if index_status != ' ' {
+        (Some(true), Some(porcelain_side_status(index_status)))
+    } else {
+        (None, None)
+    };
+    let (unstaged, unstaged_status) = if worktree_status != ' ' {
+        (Some(true), Some(porcelain_side_status(worktree_status)))
+    } else {
+        (None, None)
+    };
+    (staged, unstaged, staged_status, unstaged_status)
+}
+
 pub fn parse_git_status_porcelain(output: &str) -> Vec<GitFileChange> {
     output
         .lines()
@@ -1536,6 +1591,7 @@ pub fn parse_git_status_porcelain(output: &str) -> Vec<GitFileChange> {
 
             let raw_path = line[3..].trim().to_string();
             let status = map_porcelain_status(code);
+            let (staged, unstaged, staged_status, unstaged_status) = porcelain_stage_flags(code);
 
             if matches!(status, FileChangeStatus::Renamed | FileChangeStatus::Copied)
                 && raw_path.contains(" -> ")
@@ -1546,6 +1602,10 @@ pub fn parse_git_status_porcelain(output: &str) -> Vec<GitFileChange> {
                         path: parts[1].to_string(),
                         previous_path: Some(parts[0].to_string()),
                         status,
+                        staged,
+                        unstaged,
+                        staged_status,
+                        unstaged_status,
                     });
                 }
             }
@@ -1554,6 +1614,10 @@ pub fn parse_git_status_porcelain(output: &str) -> Vec<GitFileChange> {
                 path: raw_path,
                 previous_path: None,
                 status,
+                staged,
+                unstaged,
+                staged_status,
+                unstaged_status,
             })
         })
         .collect()
@@ -1776,17 +1840,37 @@ fn build_synthetic_rename_diff(file: &GitFileChange) -> String {
 }
 
 pub fn get_repo_file_diff(repo_path: &str, file: &GitFileChange) -> RepoFileDiff {
+    get_repo_file_diff_for_side(repo_path, file, false)
+}
+
+/// Like [`get_repo_file_diff`], but when `staged` is true the index-side patch
+/// is preferred (used for the staged row of a partially staged file).
+pub fn get_repo_file_diff_for_side(
+    repo_path: &str,
+    file: &GitFileChange,
+    staged: bool,
+) -> RepoFileDiff {
+    // Include the source path so Git can pair renames/copies.
+    let mut pathspec: Vec<&str> = Vec::new();
+    if let Some(previous) = file.previous_path.as_deref() {
+        pathspec.push(previous);
+    }
+    pathspec.push(file.path.as_str());
+    let with_paths = |prefix: &[&'static str]| -> Vec<&str> {
+        let mut args: Vec<&str> = prefix.to_vec();
+        args.extend(pathspec.iter().copied());
+        args
+    };
     let patch = [
-        vec![
+        with_paths(&[
             "--no-pager",
             "diff",
             "--no-ext-diff",
             "--find-renames",
             "--find-copies",
             "--",
-            file.path.as_str(),
-        ],
-        vec![
+        ]),
+        with_paths(&[
             "--no-pager",
             "diff",
             "--no-ext-diff",
@@ -1794,9 +1878,8 @@ pub fn get_repo_file_diff(repo_path: &str, file: &GitFileChange) -> RepoFileDiff
             "--find-copies",
             "--cached",
             "--",
-            file.path.as_str(),
-        ],
-        vec![
+        ]),
+        with_paths(&[
             "--no-pager",
             "diff",
             "--no-ext-diff",
@@ -1804,11 +1887,12 @@ pub fn get_repo_file_diff(repo_path: &str, file: &GitFileChange) -> RepoFileDiff
             "--find-copies",
             "HEAD",
             "--",
-            file.path.as_str(),
-        ],
+        ]),
     ]
     .iter()
-    .filter_map(|args| git_output_in_repo(repo_path, args))
+    .enumerate()
+    .filter(|(index, _)| !(staged && *index == 0))
+    .filter_map(|(_, args)| git_output_in_repo(repo_path, args))
     .find(|candidate| !candidate.trim().is_empty())
     .unwrap_or_else(|| {
         if matches!(
@@ -2336,6 +2420,18 @@ mod status_tests {
         assert_eq!(files[3].path, "src/now.ts");
         assert_eq!(files[4].status, FileChangeStatus::Untracked);
         assert_eq!(files[5].status, FileChangeStatus::Conflicted);
+        // Index/worktree flags (#570): conflicts are never reported as staged.
+        assert_eq!(files[0].staged, None);
+        assert_eq!(files[0].unstaged, Some(true));
+        assert_eq!(files[1].staged, Some(true));
+        assert_eq!(files[1].staged_status, Some(FileChangeStatus::Added));
+        assert_eq!(files[4].unstaged_status, Some(FileChangeStatus::Untracked));
+        assert_eq!(files[5].staged, None);
+        assert_eq!(files[5].unstaged_status, Some(FileChangeStatus::Conflicted));
+
+        let partial = parse_git_status_porcelain("MD both.ts\n");
+        assert_eq!(partial[0].staged_status, Some(FileChangeStatus::Modified));
+        assert_eq!(partial[0].unstaged_status, Some(FileChangeStatus::Deleted));
     }
 }
 
