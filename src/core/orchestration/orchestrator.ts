@@ -1401,7 +1401,7 @@ export class RoutaOrchestrator {
     }
 
     // Send the wake-up message as a new prompt to the parent's session
-    await this.sendPromptToSession(parentSessionId, wakeMessage);
+    await this.sendPromptToSession(parentSessionId, wakeMessage, record.workspaceId);
 
     console.log(
       `[Orchestrator] Woke parent agent ${parentAgentId} with completion report`
@@ -1413,7 +1413,8 @@ export class RoutaOrchestrator {
    */
   private async sendPromptToSession(
     sessionId: string,
-    prompt: string
+    prompt: string,
+    fallbackWorkspaceId?: string,
   ): Promise<void> {
     const manager = this.processManager;
 
@@ -1440,14 +1441,19 @@ export class RoutaOrchestrator {
     } else if (manager.isOpencodeAdapterSession(sessionId)) {
       const adapter = manager.getOpencodeAdapter(sessionId);
       if (adapter && adapter.alive) {
-        const acpSessionId = manager.getAcpSessionId(sessionId);
-        if (acpSessionId) {
-          // Use the adapter's prompt method
-          await (adapter as unknown as { prompt: (s: string, t: string) => Promise<unknown> }).prompt(
-            acpSessionId,
-            prompt
-          );
+        // promptStream(text, acpSessionId) forwards notifications to the session.
+        // The legacy prompt(text, model) signature must not receive a session id.
+        // Pass the session's workspace so the direct adapter can run MCP tools.
+        // Fall back to the delegation record when no HTTP session record exists.
+        const workspaceId =
+          getHttpSessionStore().getSession(sessionId)?.workspaceId ?? fallbackWorkspaceId ?? undefined;
+        for await (const _ of adapter.promptStream(prompt, sessionId, undefined, workspaceId)) {
+          // notifications are forwarded by the adapter
         }
+      } else {
+        console.error(
+          `[Orchestrator] OpenCode adapter not available for session ${sessionId}`
+        );
       }
     } else if (manager.isDockerAdapterSession(sessionId)) {
       const adapter = manager.getDockerAdapter(sessionId);
