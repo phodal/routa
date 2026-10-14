@@ -755,4 +755,34 @@ describe("RoutaOrchestrator", () => {
       }),
     );
   });
+
+  it("wakes an OpenCode SDK parent session with the prompt text via promptStream (#551)", async () => {
+    const { orchestrator, processManager } = createOrchestratorFixture();
+    const received: unknown[][] = [];
+    const legacyPrompt = vi.fn();
+    const adapter = {
+      alive: true,
+      prompt: legacyPrompt,
+      async *promptStream(...args: unknown[]) {
+        received.push(args);
+        yield "chunk";
+      },
+    };
+    Object.assign(processManager, {
+      isClaudeSession: vi.fn(() => false),
+      isClaudeCodeSdkSession: vi.fn(() => false),
+      isOpencodeAdapterSession: vi.fn(() => true),
+      getOpencodeAdapter: vi.fn(() => adapter),
+      getAcpSessionId: vi.fn(() => "acp-parent"),
+    });
+
+    await (
+      orchestrator as unknown as {
+        sendPromptToSession: (sessionId: string, prompt: string) => Promise<void>;
+      }
+    ).sendPromptToSession("parent-session", "child finished");
+
+    expect(received).toEqual([["child finished", "parent-session"]]);
+    expect(legacyPrompt).not.toHaveBeenCalled();
+  });
 });

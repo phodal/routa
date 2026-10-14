@@ -1440,14 +1440,15 @@ export class RoutaOrchestrator {
     } else if (manager.isOpencodeAdapterSession(sessionId)) {
       const adapter = manager.getOpencodeAdapter(sessionId);
       if (adapter && adapter.alive) {
-        const acpSessionId = manager.getAcpSessionId(sessionId);
-        if (acpSessionId) {
-          // Use the adapter's prompt method
-          await (adapter as unknown as { prompt: (s: string, t: string) => Promise<unknown> }).prompt(
-            acpSessionId,
-            prompt
-          );
+        // promptStream(text, acpSessionId) forwards notifications to the session.
+        // The legacy prompt(text, model) signature must not receive a session id.
+        for await (const _ of adapter.promptStream(prompt, sessionId)) {
+          // notifications are forwarded by the adapter
         }
+      } else {
+        console.error(
+          `[Orchestrator] OpenCode adapter not available for session ${sessionId}`
+        );
       }
     } else if (manager.isDockerAdapterSession(sessionId)) {
       const adapter = manager.getDockerAdapter(sessionId);
