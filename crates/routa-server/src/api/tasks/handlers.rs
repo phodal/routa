@@ -643,8 +643,8 @@ async fn delete_all_tasks(
         let task_id = query
             .task_id
             .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
+            // Use the ID verbatim (like Next.js); only reject absent/blank values.
+            .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| {
                 ServerError::BadRequest("taskId or workspaceId is required".to_string())
             })?;
