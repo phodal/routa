@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
-import { parse } from "yaml";
+
+import { loadYamlFile } from "../../../../scripts/lib/yaml";
 
 /**
  * #576: api-contract.yaml must document workspaceId as required (no implicit
@@ -21,22 +21,30 @@ vi.mock("@/core/routa-system", () => ({
     }),
 }));
 
-type Param = { name: string; in: string; required?: boolean; schema?: { default?: unknown } };
+type Param = {
+  name: string;
+  in: string;
+  required?: boolean;
+  schema?: { default?: unknown; minLength?: number };
+};
 type Operation = {
   parameters?: Param[];
   requestBody?: {
     content?: {
       "application/json"?: {
-        schema?: { required?: string[]; properties?: Record<string, { default?: unknown }> };
+        schema?: {
+          required?: string[];
+          properties?: Record<string, { default?: unknown; minLength?: number }>;
+        };
       };
     };
   };
   responses?: Record<string, unknown>;
 };
 
-const contract = parse(readFileSync(path.resolve(process.cwd(), "api-contract.yaml"), "utf8")) as {
-  paths: Record<string, Record<string, Operation>>;
-};
+const contract = loadYamlFile<{ paths: Record<string, Record<string, Operation>> }>(
+  path.resolve(process.cwd(), "api-contract.yaml"),
+)!;
 
 const QUERY_OPS: Array<[string, string]> = [
   ["/api/agents", "get"],
@@ -61,6 +69,7 @@ describe("workspaceId contract (#576)", () => {
     expect(param).toBeDefined();
     expect(param?.schema?.default).toBeUndefined();
     // GET /api/agents also accepts `id` instead of workspaceId.
+    expect(param?.schema?.minLength).toBe(1);
     if (p !== "/api/agents") expect(param?.required).toBe(true);
     expect(op.responses?.["400"]).toBeDefined();
   });
@@ -70,6 +79,7 @@ describe("workspaceId contract (#576)", () => {
     const schema = op.requestBody?.content?.["application/json"]?.schema;
     expect(schema?.required).toContain("workspaceId");
     expect(schema?.properties?.workspaceId?.default).toBeUndefined();
+    expect(schema?.properties?.workspaceId?.minLength).toBe(1);
     expect(op.responses?.["400"]).toBeDefined();
   });
 
@@ -103,5 +113,17 @@ describe("workspaceId contract (#576)", () => {
       expect(res.status).toBe(400);
       await expect(res.json()).resolves.toMatchObject({ error: "workspaceId is required" });
     }
+  });
+
+  it("DELETE /api/tasks documents taskId-or-workspaceId and a 400", async () => {
+    const op = contract.paths["/api/tasks"].delete;
+    expect(op.parameters?.find((x) => x.name === "workspaceId")?.schema?.default).toBeUndefined();
+    expect(op.parameters?.some((x) => x.name === "taskId")).toBe(true);
+    expect(op.responses?.["400"]).toBeDefined();
+
+    const tasks = await import("../tasks/route");
+    const res = await tasks.DELETE(new NextRequest(url("/api/tasks"), { method: "DELETE" }));
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: "taskId or workspaceId is required" });
   });
 });

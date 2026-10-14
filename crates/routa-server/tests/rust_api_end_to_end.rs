@@ -2124,6 +2124,40 @@ async fn api_missing_workspace_id_returns_400() {
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "DELETE {path}");
     }
 
+    let bulk = fixture
+        .client
+        .delete(fixture.endpoint("/api/tasks"))
+        .send()
+        .await
+        .expect("DELETE /api/tasks without params");
+    let bulk_body: Value = bulk.json().await.expect("decode");
+    assert!(json_has_error(
+        &bulk_body,
+        "taskId or workspaceId is required"
+    ));
+
+    // Padded workspace IDs are normalized before the task is persisted.
+    let created = fixture
+        .client
+        .post(fixture.endpoint("/api/tasks"))
+        .json(&json!({"title": "trim", "objective": "o", "workspaceId": "  default  "}))
+        .send()
+        .await
+        .expect("create task with padded workspaceId");
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let created: Value = created.json().await.expect("decode created task");
+    assert_eq!(created["task"]["workspaceId"], "default");
+    let task_id = created["task"]["id"].as_str().expect("task id").to_string();
+
+    // Single delete by taskId (no workspaceId), as in Next.js.
+    let single = fixture
+        .client
+        .delete(fixture.endpoint(&format!("/api/tasks?taskId={task_id}")))
+        .send()
+        .await
+        .expect("DELETE /api/tasks?taskId=");
+    assert_eq!(single.status(), StatusCode::OK);
+
     // GET /api/agents?id= still works without workspaceId (single lookup).
     let by_id = fixture
         .client

@@ -122,6 +122,8 @@ pub struct CreateTaskArtifactRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ListTasksQuery {
     pub workspace_id: Option<String>,
+    /// Only used by `DELETE /api/tasks` (single delete when no workspaceId).
+    pub task_id: Option<String>,
     pub session_id: Option<String>,
     pub status: Option<String>,
     pub assigned_to: Option<String>,

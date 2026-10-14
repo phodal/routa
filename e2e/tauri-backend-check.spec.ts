@@ -60,7 +60,7 @@ test.describe("Tauri/Rust Backend Verification", () => {
     const baseUrl = getBaseUrl();
 
     // Test agents endpoint
-    const agentsRes = await request.get(`${baseUrl}/api/agents`);
+    const agentsRes = await request.get(`${baseUrl}/api/agents?workspaceId=default`);
     expect(agentsRes.ok()).toBeTruthy();
     const agents = await agentsRes.json();
     expect(agents).toHaveProperty("agents");

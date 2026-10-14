@@ -1320,6 +1320,8 @@ paths:
           in: query
           schema:
             type: string
+            minLength: 1
+            pattern: '\S'
           description: 'Workspace ID. Required when listing agents (no `id`); omitting both `workspaceId` and `id` returns 400 "workspaceId is required". There is no implicit "default" workspace.'
         - name: role
           in: query
@@ -1375,6 +1377,8 @@ paths:
                   $ref: "#/components/schemas/AgentRole"
                 workspaceId:
                   type: string
+                  minLength: 1
+                  pattern: '\S'
                   description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
                 parentId:
                   type: string
@@ -1482,6 +1486,8 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
+            pattern: '\S'
           description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
         - name: status
           in: query
@@ -1526,6 +1532,8 @@ paths:
                   type: string
                 workspaceId:
                   type: string
+                  minLength: 1
+                  pattern: '\S'
                   description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
                 scope:
                   type: string
@@ -1587,13 +1595,28 @@ paths:
                     $ref: "#/components/schemas/Task"
     delete:
       operationId: deleteAllTasks
-      summary: Delete all tasks for a workspace
+      summary: Delete all tasks for a workspace, or one task by taskId
+      description: |
+        With `workspaceId`, deletes every task in that workspace. Without it, `taskId` deletes a single task.
+        Requests with neither return 400 "taskId or workspaceId is required"; there is no implicit "default" workspace.
       parameters:
         - name: workspaceId
           in: query
           schema:
             type: string
+            minLength: 1
+            pattern: '\S'
+        - name: taskId
+          in: query
+          schema:
+            type: string
       responses:
+        "400":
+          description: Neither workspaceId nor taskId provided
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: Deleted
           content:
@@ -1742,6 +1765,8 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
+            pattern: '\S'
           description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
       responses:
         "400":
@@ -1886,6 +1911,8 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
+            pattern: '\S'
           description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
       responses:
         "400":
@@ -2054,6 +2081,8 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
+            pattern: '\S'
           description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
         - name: type
           in: query
@@ -2106,6 +2135,8 @@ paths:
                   type: string
                 workspaceId:
                   type: string
+                  minLength: 1
+                  pattern: '\S'
                   description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
                 type:
                   $ref: "#/components/schemas/NoteType"
@@ -2150,6 +2181,8 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
+            pattern: '\S'
           description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
       responses:
         "400":
@@ -7044,6 +7077,8 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
+            pattern: '\S'
           description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
       responses:
         "400":
@@ -7096,6 +7131,8 @@ paths:
               properties:
                 workspaceId:
                   type: string
+                  minLength: 1
+                  pattern: '\S'
                   description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
                 messages:
                   type: array

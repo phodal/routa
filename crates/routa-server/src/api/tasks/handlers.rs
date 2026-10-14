@@ -239,7 +239,10 @@ async fn create_task(
     State(state): State<AppState>,
     Json(body): Json<CreateTaskRequest>,
 ) -> Result<(axum::http::StatusCode, Json<serde_json::Value>), ServerError> {
-    super::super::require_workspace_id(body.workspace_id.as_deref())?;
+    let mut body = body;
+    body.workspace_id = Some(super::super::require_workspace_id(
+        body.workspace_id.as_deref(),
+    )?);
     let service = TaskApplicationService::new(state.clone());
     let plan = service.create_task(create_task_command(body)).await?;
     let mut task = plan.task;
@@ -634,7 +637,32 @@ async fn delete_all_tasks(
     State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
-    let workspace_id = super::super::require_workspace_id(query.workspace_id.as_deref())?;
+    // Mirrors Next.js: workspaceId → bulk delete; else taskId → single delete;
+    // neither → 400. Never falls back to the "default" workspace.
+    let Ok(workspace_id) = super::super::require_workspace_id(query.workspace_id.as_deref()) else {
+        let task_id = query
+            .task_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                ServerError::BadRequest("taskId or workspaceId is required".to_string())
+            })?;
+        let task = state.task_store.get(task_id).await?;
+        state.task_store.delete(task_id).await?;
+        if let Some(task) = task {
+            emit_kanban_workspace_event(
+                &state,
+                &task.workspace_id,
+                "task",
+                "deleted",
+                Some(task_id),
+                "user",
+            )
+            .await;
+        }
+        return Ok(Json(serde_json::json!({ "deleted": true })));
+    };
     let workspace_id = workspace_id.as_str();
     let tasks = state.task_store.list_by_workspace(workspace_id).await?;
     let count = tasks.len();
