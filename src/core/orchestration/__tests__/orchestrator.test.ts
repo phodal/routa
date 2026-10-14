@@ -788,4 +788,31 @@ describe("RoutaOrchestrator", () => {
     expect(received).toEqual([["child finished", "parent-session", undefined, "ws-parent"]]);
     expect(legacyPrompt).not.toHaveBeenCalled();
   });
+
+  it("falls back to the delegation workspaceId when the parent has no HTTP session record (#551)", async () => {
+    const { orchestrator, processManager } = createOrchestratorFixture();
+    const received: unknown[][] = [];
+    const adapter = {
+      alive: true,
+      async *promptStream(...args: unknown[]) {
+        received.push(args);
+        yield "chunk";
+      },
+    };
+    Object.assign(processManager, {
+      isClaudeSession: vi.fn(() => false),
+      isClaudeCodeSdkSession: vi.fn(() => false),
+      isOpencodeAdapterSession: vi.fn(() => true),
+      getOpencodeAdapter: vi.fn(() => adapter),
+    });
+    getSessionMock.mockReturnValue(undefined);
+
+    await (
+      orchestrator as unknown as {
+        sendPromptToSession: (sessionId: string, prompt: string, workspaceId?: string) => Promise<void>;
+      }
+    ).sendPromptToSession("parent-session", "child finished", "ws-record");
+
+    expect(received).toEqual([["child finished", "parent-session", undefined, "ws-record"]]);
+  });
 });
