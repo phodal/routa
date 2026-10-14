@@ -1442,7 +1442,9 @@ export class RoutaOrchestrator {
       if (adapter && adapter.alive) {
         // promptStream(text, acpSessionId) forwards notifications to the session.
         // The legacy prompt(text, model) signature must not receive a session id.
-        for await (const _ of adapter.promptStream(prompt, sessionId)) {
+        // Pass the session's workspace so the direct adapter can run MCP tools.
+        const workspaceId = getHttpSessionStore().getSession(sessionId)?.workspaceId ?? undefined;
+        for await (const _ of adapter.promptStream(prompt, sessionId, undefined, workspaceId)) {
           // notifications are forwarded by the adapter
         }
       } else {

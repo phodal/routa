@@ -776,13 +776,16 @@ describe("RoutaOrchestrator", () => {
       getAcpSessionId: vi.fn(() => "acp-parent"),
     });
 
+    getSessionMock.mockReturnValue({ workspaceId: "ws-parent" });
+
     await (
       orchestrator as unknown as {
         sendPromptToSession: (sessionId: string, prompt: string) => Promise<void>;
       }
     ).sendPromptToSession("parent-session", "child finished");
 
-    expect(received).toEqual([["child finished", "parent-session"]]);
+    expect(getSessionMock).toHaveBeenCalledWith("parent-session");
+    expect(received).toEqual([["child finished", "parent-session", undefined, "ws-parent"]]);
     expect(legacyPrompt).not.toHaveBeenCalled();
   });
 });
