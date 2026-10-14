@@ -158,6 +158,13 @@ describe("getRepoFileDiff staged side (#570)", () => {
     expect(getRepoFileDiff("/tmp/repo", { path: "a.ts", status: "modified" }).patch).toContain("WORKTREE");
   });
 
+  it("passes the rename source in the pathspec", () => {
+    getRepoFileDiff("/tmp/repo", { path: "new.ts", previousPath: "old.ts", status: "renamed" }, { staged: true });
+    expect(gitExecMock.mock.calls[0][0]).toEqual(
+      expect.arrayContaining(["--cached", "--", "old.ts", "new.ts"]),
+    );
+  });
+
   it("returns the index patch for the staged row", () => {
     expect(
       getRepoFileDiff("/tmp/repo", { path: "a.ts", status: "modified" }, { staged: true }).patch,

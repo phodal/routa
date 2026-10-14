@@ -1850,17 +1850,27 @@ pub fn get_repo_file_diff_for_side(
     file: &GitFileChange,
     staged: bool,
 ) -> RepoFileDiff {
+    // Include the source path so Git can pair renames/copies.
+    let mut pathspec: Vec<&str> = Vec::new();
+    if let Some(previous) = file.previous_path.as_deref() {
+        pathspec.push(previous);
+    }
+    pathspec.push(file.path.as_str());
+    let with_paths = |prefix: &[&'static str]| -> Vec<&str> {
+        let mut args: Vec<&str> = prefix.to_vec();
+        args.extend(pathspec.iter().copied());
+        args
+    };
     let patch = [
-        vec![
+        with_paths(&[
             "--no-pager",
             "diff",
             "--no-ext-diff",
             "--find-renames",
             "--find-copies",
             "--",
-            file.path.as_str(),
-        ],
-        vec![
+        ]),
+        with_paths(&[
             "--no-pager",
             "diff",
             "--no-ext-diff",
@@ -1868,9 +1878,8 @@ pub fn get_repo_file_diff_for_side(
             "--find-copies",
             "--cached",
             "--",
-            file.path.as_str(),
-        ],
-        vec![
+        ]),
+        with_paths(&[
             "--no-pager",
             "diff",
             "--no-ext-diff",
@@ -1878,8 +1887,7 @@ pub fn get_repo_file_diff_for_side(
             "--find-copies",
             "HEAD",
             "--",
-            file.path.as_str(),
-        ],
+        ]),
     ]
     .iter()
     .enumerate()

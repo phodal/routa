@@ -730,9 +730,12 @@ export function getRepoFileDiff(
   file: GitFileChange,
   options: { staged?: boolean } = {},
 ): RepoFileDiff {
-  const worktreeDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--", file.path];
-  const indexDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--cached", "--", file.path];
-  const headDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "HEAD", "--", file.path];
+  // Include the source path so Git can pair renames/copies instead of
+  // reporting the destination as a new file.
+  const pathspec = file.previousPath ? [file.previousPath, file.path] : [file.path];
+  const worktreeDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--", ...pathspec];
+  const indexDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--cached", "--", ...pathspec];
+  const headDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "HEAD", "--", ...pathspec];
   // For the staged row of a partially staged file, show the index-side patch.
   const patch = getFirstNonEmptyGitDiff(
     repoPath,
