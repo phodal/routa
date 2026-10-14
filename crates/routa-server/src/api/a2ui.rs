@@ -18,31 +18,36 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 struct DashboardQuery {
     workspace_id: Option<String>,
 }
 
 /// GET /api/a2ui/dashboard — Mock A2UI dashboard data
-async fn get_dashboard(Query(_q): Query<DashboardQuery>) -> Json<serde_json::Value> {
+async fn get_dashboard(
+    Query(q): Query<DashboardQuery>,
+) -> Result<Json<serde_json::Value>, crate::error::ServerError> {
+    super::require_workspace_id(q.workspace_id.as_deref())?;
     // Desktop mode: return minimal A2UI response
-    Json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "data": [],
         "kind": "data",
         "metadata": {
             "mimeType": "application/json+a2ui",
             "note": "A2UI protocol is not fully implemented in desktop mode"
         }
-    }))
+    })))
 }
 
 /// POST /api/a2ui/dashboard — Mock A2UI custom surface handler
-async fn post_dashboard(Json(_body): Json<serde_json::Value>) -> Json<serde_json::Value> {
+async fn post_dashboard(
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, crate::error::ServerError> {
+    super::require_workspace_id(body.get("workspaceId").and_then(|v| v.as_str()))?;
     // Desktop mode: acknowledge but don't process
-    Json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "success": true,
         "surfaceCount": 0,
         "totalMessages": 0,
         "note": "A2UI protocol is not fully implemented in desktop mode"
-    }))
+    })))
 }

@@ -1191,7 +1191,7 @@ async fn api_contract_negative_filters() {
 
     let invalid_task_status = fixture
         .client
-        .get(fixture.endpoint("/api/tasks?status=INVALID_STATUS"))
+        .get(fixture.endpoint("/api/tasks?workspaceId=default&status=INVALID_STATUS"))
         .send()
         .await
         .expect("list tasks with invalid status");
@@ -2060,4 +2060,76 @@ async fn api_spec_feature_tree_commit_contract() {
             .map(|items| items.len()),
         Some(1)
     );
+}
+
+/// #576: workspaceId is required on the bridged endpoints, matching the
+/// Next.js handlers and api-contract.yaml. No implicit "default" workspace.
+#[tokio::test]
+async fn api_missing_workspace_id_returns_400() {
+    let fixture = ApiFixture::new().await;
+
+    let get_paths = [
+        "/api/agents",
+        "/api/tasks",
+        "/api/tasks/ready",
+        "/api/kanban/boards",
+        "/api/notes",
+        "/api/notes?workspaceId=%20%20",
+        "/api/a2ui/dashboard",
+    ];
+    for path in get_paths {
+        let resp = fixture
+            .client
+            .get(fixture.endpoint(path))
+            .send()
+            .await
+            .expect("send GET without workspaceId");
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "GET {path}");
+        let body: Value = resp.json().await.expect("decode error body");
+        assert!(
+            json_has_error(&body, "workspaceId is required"),
+            "GET {path}: {body}"
+        );
+    }
+
+    let posts = [
+        ("/api/agents", json!({"name": "A", "role": "DEVELOPER"})),
+        ("/api/tasks", json!({"title": "t", "objective": "o"})),
+        ("/api/notes", json!({"title": "n"})),
+        ("/api/a2ui/dashboard", json!({"messages": []})),
+    ];
+    for (path, payload) in posts {
+        let resp = fixture
+            .client
+            .post(fixture.endpoint(path))
+            .json(&payload)
+            .send()
+            .await
+            .expect("send POST without workspaceId");
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "POST {path}");
+        let body: Value = resp.json().await.expect("decode error body");
+        assert!(
+            json_has_error(&body, "workspaceId is required"),
+            "POST {path}: {body}"
+        );
+    }
+
+    for path in ["/api/notes?noteId=n1", "/api/tasks"] {
+        let resp = fixture
+            .client
+            .delete(fixture.endpoint(path))
+            .send()
+            .await
+            .expect("send DELETE without workspaceId");
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "DELETE {path}");
+    }
+
+    // GET /api/agents?id= still works without workspaceId (single lookup).
+    let by_id = fixture
+        .client
+        .get(fixture.endpoint("/api/agents?id=does-not-exist"))
+        .send()
+        .await
+        .expect("get agent by id");
+    assert_ne!(by_id.status(), StatusCode::BAD_REQUEST);
 }

@@ -195,7 +195,8 @@ async fn list_tasks(
     State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
-    let workspace_id = query.workspace_id.as_deref().unwrap_or("default");
+    let workspace_id = super::super::require_workspace_id(query.workspace_id.as_deref())?;
+    let workspace_id = workspace_id.as_str();
 
     let tasks = if let Some(session_id) = &query.session_id {
         // Filter by session_id takes priority
@@ -238,6 +239,7 @@ async fn create_task(
     State(state): State<AppState>,
     Json(body): Json<CreateTaskRequest>,
 ) -> Result<(axum::http::StatusCode, Json<serde_json::Value>), ServerError> {
+    super::super::require_workspace_id(body.workspace_id.as_deref())?;
     let service = TaskApplicationService::new(state.clone());
     let plan = service.create_task(create_task_command(body)).await?;
     let mut task = plan.task;
@@ -617,7 +619,8 @@ async fn find_ready_tasks(
     State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
-    let workspace_id = query.workspace_id.as_deref().unwrap_or("default");
+    let workspace_id = super::super::require_workspace_id(query.workspace_id.as_deref())?;
+    let workspace_id = workspace_id.as_str();
     let tasks = state.task_store.find_ready_tasks(workspace_id).await?;
 
     // Use batch serialization to avoid N+1 queries
@@ -631,7 +634,8 @@ async fn delete_all_tasks(
     State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
-    let workspace_id = query.workspace_id.as_deref().unwrap_or("default");
+    let workspace_id = super::super::require_workspace_id(query.workspace_id.as_deref())?;
+    let workspace_id = workspace_id.as_str();
     let tasks = state.task_store.list_by_workspace(workspace_id).await?;
     let count = tasks.len();
     for task in &tasks {

@@ -399,7 +399,7 @@ async fn list_boards(
     State(state): State<AppState>,
     Query(query): Query<BoardsQuery>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
-    let workspace_id = query.workspace_id.unwrap_or_else(|| "default".to_string());
+    let workspace_id = super::require_workspace_id(query.workspace_id.as_deref())?;
     let list_result = rpc_result(
         &state,
         "kanban.listBoards",

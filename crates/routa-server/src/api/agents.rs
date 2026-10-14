@@ -40,7 +40,8 @@ async fn list_agents(
         return Ok(Json(serde_json::json!(agent)));
     }
 
-    let workspace_id = query.workspace_id.as_deref().unwrap_or("default");
+    let workspace_id = super::require_workspace_id(query.workspace_id.as_deref())?;
+    let workspace_id = workspace_id.as_str();
 
     let agents = if let Some(parent_id) = &query.parent_id {
         state.agent_store.list_by_parent(parent_id).await?
@@ -97,10 +98,10 @@ async fn create_agent(
     State(state): State<AppState>,
     Json(body): Json<CreateAgentRequest>,
 ) -> Result<(axum::http::StatusCode, Json<CreateAgentResponse>), ServerError> {
+    let workspace_id = super::require_workspace_id(body.workspace_id.as_deref())?;
     let role = AgentRole::from_str(&body.role)
         .ok_or_else(|| ServerError::BadRequest(format!("Invalid role: {}", body.role)))?;
     let model_tier = body.model_tier.as_deref().and_then(ModelTier::from_str);
-    let workspace_id = body.workspace_id.unwrap_or_else(|| "default".to_string());
 
     state.workspace_store.ensure_default().await?;
 

@@ -119,3 +119,30 @@ pub fn api_router(state: AppState) -> Router<AppState> {
         .nest("/api/workflows", workflows::router())
         .nest("/api", worktrees::router())
 }
+
+/// Validate a required `workspaceId` (query or body). Mirrors the Next.js
+/// `requireWorkspaceId` contract: missing or blank values are rejected with
+/// 400 `"workspaceId is required"`; there is no implicit "default" workspace.
+pub(crate) fn require_workspace_id(
+    value: Option<&str>,
+) -> Result<String, crate::error::ServerError> {
+    match value.map(str::trim) {
+        Some(v) if !v.is_empty() => Ok(v.to_string()),
+        _ => Err(crate::error::ServerError::BadRequest(
+            "workspaceId is required".to_string(),
+        )),
+    }
+}
+
+#[cfg(test)]
+mod require_workspace_id_tests {
+    use super::require_workspace_id;
+
+    #[test]
+    fn rejects_missing_or_blank_and_trims() {
+        assert!(require_workspace_id(None).is_err());
+        assert!(require_workspace_id(Some("")).is_err());
+        assert!(require_workspace_id(Some("   ")).is_err());
+        assert_eq!(require_workspace_id(Some(" ws-1 ")).unwrap(), "ws-1");
+    }
+}

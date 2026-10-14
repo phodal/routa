@@ -142,7 +142,7 @@ async fn test_rust_backend_api() {
 
     // ── Test 3: List Agents (empty) ─────────────────────────────────
     println!("=== Test 3: List Agents (empty) ===");
-    let (status, body) = request_json(&app, Method::GET, "/api/agents", None).await;
+    let (status, body) = request_json(&app, Method::GET, "/api/agents?workspaceId=default", None).await;
     assert_eq!(status, 200);
     let agents = body["agents"].as_array().unwrap();
     assert_eq!(agents.len(), 0);
@@ -156,7 +156,8 @@ async fn test_rust_backend_api() {
         "/api/agents",
         Some(json!({
             "name": "Test ROUTA",
-            "role": "ROUTA"
+            "role": "ROUTA",
+            "workspaceId": "default"
         })),
     )
     .await;
@@ -167,7 +168,7 @@ async fn test_rust_backend_api() {
 
     // ── Test 5: List Agents (should have 1) ─────────────────────────
     println!("=== Test 5: List Agents (should have 1) ===");
-    let (_, body) = request_json(&app, Method::GET, "/api/agents", None).await;
+    let (_, body) = request_json(&app, Method::GET, "/api/agents?workspaceId=default", None).await;
     let agents = body["agents"].as_array().unwrap();
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0]["name"], "Test ROUTA");
@@ -808,7 +809,8 @@ async fn test_rust_backend_api() {
         "/api/agents",
         serde_json::json!({
             "name": "Test CRAFTER",
-            "role": "CRAFTER"
+            "role": "CRAFTER",
+            "workspaceId": "default"
         }),
     )
     .await;

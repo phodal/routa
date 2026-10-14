@@ -40,7 +40,8 @@ async fn list_notes(
     State(state): State<AppState>,
     Query(query): Query<ListNotesQuery>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
-    let workspace_id = query.workspace_id.as_deref().unwrap_or("default");
+    let workspace_id = super::require_workspace_id(query.workspace_id.as_deref())?;
+    let workspace_id = workspace_id.as_str();
 
     if let Some(note_id) = &query.note_id {
         let note = state.note_store.get(note_id, workspace_id).await?;
@@ -90,7 +91,7 @@ async fn create_or_update_note(
     State(state): State<AppState>,
     Json(body): Json<CreateNoteRequest>,
 ) -> Result<(axum::http::StatusCode, Json<serde_json::Value>), ServerError> {
-    let workspace_id = body.workspace_id.unwrap_or_else(|| "default".to_string());
+    let workspace_id = super::require_workspace_id(body.workspace_id.as_deref())?;
     let note_id = body
         .note_id
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
@@ -138,7 +139,8 @@ async fn delete_note_query(
     State(state): State<AppState>,
     Query(query): Query<DeleteNoteQuery>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
-    let workspace_id = query.workspace_id.as_deref().unwrap_or("default");
+    let workspace_id = super::require_workspace_id(query.workspace_id.as_deref())?;
+    let workspace_id = workspace_id.as_str();
     state
         .note_store
         .delete(&query.note_id, workspace_id)
