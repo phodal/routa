@@ -22,6 +22,7 @@ vi.mock("@/core/utils/safe-exec", () => ({
 
 const {
   getRepoChanges,
+  getRepoFileDiff,
   invalidateRepoChangesCache,
   parseGitStatusPorcelain,
   isGitHubUrl,
@@ -43,13 +44,13 @@ describe("parseGitStatusPorcelain", () => {
 
   it("preserves the first character of filenames in porcelain rows", () => {
     expect(parseGitStatusPorcelain(" M package-lock.json")).toEqual([
-      { path: "package-lock.json", status: "modified", unstaged: true },
+      { path: "package-lock.json", status: "modified", unstaged: true, unstagedStatus: "modified" },
     ]);
   });
 
   it("parses untracked files without rewriting their path", () => {
     expect(parseGitStatusPorcelain("?? package-lock.json")).toEqual([
-      { path: "package-lock.json", status: "untracked", unstaged: true },
+      { path: "package-lock.json", status: "untracked", unstaged: true, unstagedStatus: "untracked" },
     ]);
   });
 
@@ -59,21 +60,30 @@ describe("parseGitStatusPorcelain", () => {
         "R  src/old.ts -> src/new.ts\nC  src/base.ts -> src/copied.ts\nUU src/conflict.ts\n!! dist/out.js\n",
       ),
     ).toEqual([
-      { path: "src/new.ts", previousPath: "src/old.ts", status: "renamed", staged: true },
-      { path: "src/copied.ts", previousPath: "src/base.ts", status: "copied", staged: true },
-      { path: "src/conflict.ts", status: "conflicted", staged: true, unstaged: true },
+      { path: "src/new.ts", previousPath: "src/old.ts", status: "renamed", staged: true, stagedStatus: "renamed" },
+      { path: "src/copied.ts", previousPath: "src/base.ts", status: "copied", staged: true, stagedStatus: "copied" },
+      // Unmerged conflicts are never reported as staged.
+      { path: "src/conflict.ts", status: "conflicted", unstaged: true, unstagedStatus: "conflicted" },
     ]);
   });
 
   it("marks index and worktree state separately (#570)", () => {
     expect(
-      parseGitStatusPorcelain("M  staged.ts\n M unstaged.ts\nMM both.ts\nA  added.ts\n D gone.ts\n"),
+      parseGitStatusPorcelain("M  staged.ts\n M unstaged.ts\nMD both.ts\nA  added.ts\n D gone.ts\nAA conflict.ts\n"),
     ).toEqual([
-      { path: "staged.ts", status: "modified", staged: true },
-      { path: "unstaged.ts", status: "modified", unstaged: true },
-      { path: "both.ts", status: "modified", staged: true, unstaged: true },
-      { path: "added.ts", status: "added", staged: true },
-      { path: "gone.ts", status: "deleted", unstaged: true },
+      { path: "staged.ts", status: "modified", staged: true, stagedStatus: "modified" },
+      { path: "unstaged.ts", status: "modified", unstaged: true, unstagedStatus: "modified" },
+      {
+        path: "both.ts",
+        status: "deleted",
+        staged: true,
+        unstaged: true,
+        stagedStatus: "modified",
+        unstagedStatus: "deleted",
+      },
+      { path: "added.ts", status: "added", staged: true, stagedStatus: "added" },
+      { path: "gone.ts", status: "deleted", unstaged: true, unstagedStatus: "deleted" },
+      { path: "conflict.ts", status: "conflicted", unstaged: true, unstagedStatus: "conflicted" },
     ]);
   });
 
@@ -129,6 +139,29 @@ describe("parseGitStatusPorcelain", () => {
     const fresh = getRepoChanges(repo).files;
     expect(fresh).toMatchObject([{ path: "a.ts", status: "modified", staged: true }]);
     expect(fresh[0]?.unstaged).toBeUndefined();
+  });
+});
+
+describe("getRepoFileDiff staged side (#570)", () => {
+  beforeEach(() => {
+    gitExecMock.mockReset();
+    gitExecMock.mockImplementation((args: string[]) => {
+      const command = formatGitArgs(args);
+      if (command.includes(" --cached ")) return "INDEX PATCH\n+a\n";
+      if (command.includes(" HEAD ")) return "HEAD PATCH\n";
+      if (command.startsWith("git --no-pager diff")) return "WORKTREE PATCH\n+b\n";
+      throw new Error(`Unexpected command: ${command}`);
+    });
+  });
+
+  it("prefers the working-tree patch by default", () => {
+    expect(getRepoFileDiff("/tmp/repo", { path: "a.ts", status: "modified" }).patch).toContain("WORKTREE");
+  });
+
+  it("returns the index patch for the staged row", () => {
+    expect(
+      getRepoFileDiff("/tmp/repo", { path: "a.ts", status: "modified" }, { staged: true }).patch,
+    ).toContain("INDEX");
   });
 });
 

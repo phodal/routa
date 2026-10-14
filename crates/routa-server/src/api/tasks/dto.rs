@@ -134,6 +134,8 @@ pub struct TaskChangeFileQuery {
     pub status: Option<String>,
     #[serde(rename = "previousPath")]
     pub previous_path: Option<String>,
+    /// Prefer the index-side (staged) patch.
+    pub staged: Option<bool>,
 }
 
 /// Query params for task commit change

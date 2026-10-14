@@ -253,7 +253,8 @@ pub async fn get_task_change_file(
         ));
     }
 
-    let diff = crate::git::get_repo_file_diff(
+    let staged = query.staged.unwrap_or(false);
+    let diff = crate::git::get_repo_file_diff_for_side(
         &repo_path,
         &GitFileChange {
             path: path.to_string(),
@@ -266,7 +267,12 @@ pub async fn get_task_change_file(
                     Some(trimmed)
                 }
             }),
+            staged: None,
+            unstaged: None,
+            staged_status: None,
+            unstaged_status: None,
         },
+        staged,
     );
 
     Ok(Json(serde_json::json!({ "diff": diff })))
@@ -357,6 +363,10 @@ pub async fn get_task_change_stats(
                             .unwrap_or("modified"),
                     ),
                     previous_path: None,
+                    staged: None,
+                    unstaged: None,
+                    staged_status: None,
+                    unstaged_status: None,
                 },
             );
             serde_json::json!({

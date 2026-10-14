@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useTranslation } from "@/i18n";
 import type { KanbanRepoChanges, KanbanFileChangeItem, KanbanTaskChanges, KanbanCommitInfo } from "../kanban-file-changes-types";
-import { splitFileChangesByIndex } from "../kanban-file-changes-types";
+import { fileSelectionKey, splitFileChangesByIndex } from "../kanban-file-changes-types";
 import { KanbanUnstagedSection } from "./kanban-unstaged-section";
 import { KanbanStagedSection } from "./kanban-staged-section";
 import { KanbanCommitsSection } from "./kanban-commits-section";
@@ -119,7 +119,7 @@ export function KanbanEnhancedFileChangesPanel({
   const handleFileSelect = useCallback((file: KanbanFileChangeItem, selected: boolean) => {
     setFileSelections((prev) => ({
       ...prev,
-      [file.path]: selected,
+      [fileSelectionKey(file)]: selected,
     }));
   }, []);
 
@@ -127,7 +127,7 @@ export function KanbanEnhancedFileChangesPanel({
     setFileSelections((prev) => {
       const next = { ...prev };
       files.forEach((file) => {
-        next[file.path] = selected;
+        next[fileSelectionKey(file)] = selected;
       });
       return next;
     });
@@ -135,12 +135,12 @@ export function KanbanEnhancedFileChangesPanel({
 
   // Add selection state to files
   const unstagedWithSelection = useMemo(
-    () => unstagedFiles.map((f) => ({ ...f, selected: fileSelections[f.path] || false })),
+    () => unstagedFiles.map((f) => ({ ...f, selected: fileSelections[fileSelectionKey(f)] || false })),
     [unstagedFiles, fileSelections]
   );
 
   const stagedWithSelection = useMemo(
-    () => stagedFiles.map((f) => ({ ...f, selected: fileSelections[f.path] || false })),
+    () => stagedFiles.map((f) => ({ ...f, selected: fileSelections[fileSelectionKey(f)] || false })),
     [stagedFiles, fileSelections]
   );
 
@@ -154,7 +154,10 @@ export function KanbanEnhancedFileChangesPanel({
   }, [unstagedWithSelection, stageFiles]);
 
   const handleUnstageSelected = useCallback(async () => {
-    const selectedFiles = stagedWithSelection.filter((f) => f.selected).map((f) => f.path);
+    // A staged rename must restore both the destination and the source path.
+    const selectedFiles = stagedWithSelection
+      .filter((f) => f.selected)
+      .flatMap((f) => (f.previousPath ? [f.path, f.previousPath] : [f.path]));
     if (selectedFiles.length === 0) return;
 
     await unstageFiles(selectedFiles);

@@ -14,6 +14,7 @@ export async function GET(
   const path = url.searchParams.get("path")?.trim();
   const status = url.searchParams.get("status")?.trim() as GitFileChange["status"] | null;
   const previousPath = url.searchParams.get("previousPath")?.trim() || undefined;
+  const staged = url.searchParams.get("staged") === "true";
   const system = getRoutaSystem();
   const task = await system.taskStore.get(taskId);
 
@@ -40,7 +41,7 @@ export async function GET(
     path,
     previousPath,
     status,
-  });
+  }, { staged });
 
   return NextResponse.json({ diff }, { headers: { "Cache-Control": "no-store" } });
 }

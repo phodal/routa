@@ -34,6 +34,12 @@ export interface KanbanFileChangeItem {
   staged?: boolean;
   /** Whether the working tree has changes for this file that are not staged */
   unstaged?: boolean;
+  /** Index-side status when the file is staged */
+  stagedStatus?: KanbanFileChangeStatus;
+  /** Working-tree-side status when the file has unstaged changes */
+  unstagedStatus?: KanbanFileChangeStatus;
+  /** UI state: which list this row belongs to (set by splitFileChangesByIndex) */
+  side?: "staged" | "unstaged";
   /** UI state: whether the file is selected for batch operations */
   selected?: boolean;
 }
@@ -186,10 +192,17 @@ export interface GitOperationResponse {
   repoChanges?: KanbanRepoChanges;
 }
 
+/** Selection key scoped to the list a row is in, so MM rows select independently. */
+export function fileSelectionKey(file: KanbanFileChangeItem): string {
+  return `${file.side ?? "unstaged"}:${file.path}`;
+}
+
 /**
  * Split a flat file-change list into unstaged and staged buckets using the
  * per-file Git index flags. A file changed both in the index and the worktree
- * (e.g. porcelain "MM") appears in both lists. Payloads without any index
+ * (e.g. porcelain "MM") appears in both lists, each row carrying its own
+ * side-specific status. Line counts come from the working tree, so they are
+ * kept only on rows where they apply unambiguously. Payloads without any index
  * flags (older servers, task-level changes) are treated as all unstaged.
  */
 export function splitFileChangesByIndex(files: KanbanFileChangeItem[]): {
@@ -200,8 +213,21 @@ export function splitFileChangesByIndex(files: KanbanFileChangeItem[]): {
   if (!hasIndexFlags) {
     return { unstagedFiles: files, stagedFiles: [] };
   }
-  return {
-    unstagedFiles: files.filter((file) => file.unstaged || !file.staged),
-    stagedFiles: files.filter((file) => file.staged),
-  };
+  const unstagedFiles: KanbanFileChangeItem[] = [];
+  const stagedFiles: KanbanFileChangeItem[] = [];
+  for (const file of files) {
+    const both = Boolean(file.staged && file.unstaged);
+    if (file.unstaged || !file.staged) {
+      unstagedFiles.push({ ...file, side: "unstaged", status: file.unstagedStatus ?? file.status });
+    }
+    if (file.staged) {
+      stagedFiles.push({
+        ...file,
+        side: "staged",
+        status: file.stagedStatus ?? file.status,
+        ...(both ? { additions: undefined, deletions: undefined } : {}),
+      });
+    }
+  }
+  return { unstagedFiles, stagedFiles };
 }

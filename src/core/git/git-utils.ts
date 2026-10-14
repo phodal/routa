@@ -155,6 +155,10 @@ export interface GitFileChange {
   staged?: boolean;
   /** True when the working tree holds a change not yet staged (including untracked). */
   unstaged?: boolean;
+  /** Status of the index-side change (set when `staged`). */
+  stagedStatus?: FileChangeStatus;
+  /** Status of the working-tree-side change (set when `unstaged`). */
+  unstagedStatus?: FileChangeStatus;
 }
 
 export interface RepoChanges {
@@ -393,13 +397,35 @@ function mapPorcelainStatus(code: string): FileChangeStatus {
   return "modified";
 }
 
-function porcelainStageFlags(code: string): Pick<GitFileChange, "staged" | "unstaged"> {
-  if (code === "??") return { unstaged: true };
+const PORCELAIN_SIDE_STATUS: Record<string, FileChangeStatus> = {
+  M: "modified",
+  A: "added",
+  D: "deleted",
+  R: "renamed",
+  C: "copied",
+  T: "typechange",
+};
+
+type StageFlags = Pick<GitFileChange, "staged" | "unstaged" | "stagedStatus" | "unstagedStatus">;
+
+function porcelainStageFlags(code: string): StageFlags {
+  if (code === "??") return { unstaged: true, unstagedStatus: "untracked" };
   const [indexStatus = " ", worktreeStatus = " "] = code.split("");
-  return {
-    ...(indexStatus !== " " ? { staged: true } : {}),
-    ...(worktreeStatus !== " " ? { unstaged: true } : {}),
-  };
+  // Unmerged entries (U*, *U, AA, DD) are neither staged nor ready to commit:
+  // surface them on the working-tree side only until the conflict is resolved.
+  if (indexStatus === "U" || worktreeStatus === "U" || code === "AA" || code === "DD") {
+    return { unstaged: true, unstagedStatus: "conflicted" };
+  }
+  const flags: StageFlags = {};
+  if (indexStatus !== " ") {
+    flags.staged = true;
+    flags.stagedStatus = PORCELAIN_SIDE_STATUS[indexStatus] ?? "modified";
+  }
+  if (worktreeStatus !== " ") {
+    flags.unstaged = true;
+    flags.unstagedStatus = PORCELAIN_SIDE_STATUS[worktreeStatus] ?? "modified";
+  }
+  return flags;
 }
 
 export function parseGitStatusPorcelain(output: string): GitFileChange[] {
@@ -699,12 +725,19 @@ function getRepoFileLineStats(repoPath: string, file: GitFileChange): { addition
   return { additions: 0, deletions: 0 };
 }
 
-export function getRepoFileDiff(repoPath: string, file: GitFileChange): RepoFileDiff {
-  const patch = getFirstNonEmptyGitDiff(repoPath, [
-    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--", file.path],
-    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--cached", "--", file.path],
-    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "HEAD", "--", file.path],
-  ]);
+export function getRepoFileDiff(
+  repoPath: string,
+  file: GitFileChange,
+  options: { staged?: boolean } = {},
+): RepoFileDiff {
+  const worktreeDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--", file.path];
+  const indexDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--cached", "--", file.path];
+  const headDiff = ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "HEAD", "--", file.path];
+  // For the staged row of a partially staged file, show the index-side patch.
+  const patch = getFirstNonEmptyGitDiff(
+    repoPath,
+    options.staged ? [indexDiff, headDiff] : [worktreeDiff, indexDiff, headDiff],
+  );
 
   if (patch) {
     const counts = countDiffPatchLines(patch);

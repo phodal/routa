@@ -3711,6 +3711,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: staged
+          in: query
+          schema:
+            type: boolean
+          description: When true, return the index-side (staged) patch first instead of the working-tree patch.
       responses:
         "200":
           description: File diff payload
