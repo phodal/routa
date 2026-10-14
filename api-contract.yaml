@@ -1320,7 +1320,7 @@ paths:
           in: query
           schema:
             type: string
-            default: "default"
+          description: 'Workspace ID. Required when listing agents (no `id`); omitting both `workspaceId` and `id` returns 400 "workspaceId is required". There is no implicit "default" workspace.'
         - name: role
           in: query
           schema:
@@ -1339,6 +1339,12 @@ paths:
             type: string
           description: If present with id, returns agent summary (Next.js only)
       responses:
+        "400":
+          description: Missing workspaceId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: Agent list or single agent
           content:
@@ -1361,7 +1367,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, role]
+              required: [name, role, workspaceId]
               properties:
                 name:
                   type: string
@@ -1369,12 +1375,18 @@ paths:
                   $ref: "#/components/schemas/AgentRole"
                 workspaceId:
                   type: string
-                  default: "default"
+                  description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
                 parentId:
                   type: string
                 modelTier:
                   $ref: "#/components/schemas/ModelTier"
       responses:
+        "400":
+          description: Missing workspaceId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "201":
           description: Created agent
           content:
@@ -1467,9 +1479,10 @@ paths:
       parameters:
         - name: workspaceId
           in: query
+          required: true
           schema:
             type: string
-            default: "default"
+          description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
         - name: status
           in: query
           schema:
@@ -1479,6 +1492,12 @@ paths:
           schema:
             type: string
       responses:
+        "400":
+          description: Missing workspaceId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: Task list
           content:
@@ -1499,7 +1518,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [title, objective]
+              required: [title, objective, workspaceId]
               properties:
                 title:
                   type: string
@@ -1507,7 +1526,7 @@ paths:
                   type: string
                 workspaceId:
                   type: string
-                  default: "default"
+                  description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
                 scope:
                   type: string
                 acceptanceCriteria:
@@ -1551,6 +1570,12 @@ paths:
                 repoPath:
                   type: string
       responses:
+        "400":
+          description: Missing workspaceId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "201":
           description: Created task
           content:
@@ -1714,10 +1739,17 @@ paths:
       parameters:
         - name: workspaceId
           in: query
+          required: true
           schema:
             type: string
-            default: "default"
+          description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
       responses:
+        "400":
+          description: Missing workspaceId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: Ready tasks
           content:
@@ -1851,10 +1883,17 @@ paths:
       parameters:
         - name: workspaceId
           in: query
+          required: true
           schema:
             type: string
-            default: "default"
+          description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
       responses:
+        "400":
+          description: Missing workspaceId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: Board list
           content:
@@ -2012,9 +2051,10 @@ paths:
       parameters:
         - name: workspaceId
           in: query
+          required: true
           schema:
             type: string
-            default: "default"
+          description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
         - name: type
           in: query
           schema:
@@ -2025,6 +2065,12 @@ paths:
             type: string
           description: If provided, returns single note
       responses:
+        "400":
+          description: Missing workspaceId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: Notes list or single note
           content:
@@ -2050,7 +2096,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [title]
+              required: [title, workspaceId]
               properties:
                 noteId:
                   type: string
@@ -2060,12 +2106,18 @@ paths:
                   type: string
                 workspaceId:
                   type: string
-                  default: "default"
+                  description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
                 type:
                   $ref: "#/components/schemas/NoteType"
                 metadata:
                   $ref: "#/components/schemas/NoteMetadata"
       responses:
+        "400":
+          description: Missing workspaceId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: Updated note
           content:
@@ -2095,10 +2147,17 @@ paths:
             type: string
         - name: workspaceId
           in: query
+          required: true
           schema:
             type: string
-            default: "default"
+          description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
       responses:
+        "400":
+          description: Missing workspaceId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: Deleted
           content:
@@ -6982,11 +7041,17 @@ paths:
       parameters:
         - name: workspaceId
           in: query
+          required: true
           schema:
             type: string
-            default: "default"
-          description: Workspace ID (defaults to 'default')
+          description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
       responses:
+        "400":
+          description: Missing workspaceId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: A2UI dashboard data
           content:
@@ -7027,18 +7092,23 @@ paths:
           application/json:
             schema:
               type: object
-              required: [messages]
+              required: [messages, workspaceId]
               properties:
                 workspaceId:
                   type: string
-                  default: "default"
-                  description: Workspace ID to add messages to
+                  description: 'Workspace ID. Required; requests without it are rejected with 400 "workspaceId is required". There is no implicit "default" workspace.'
                 messages:
                   type: array
                   description: Custom A2UI v0.10 messages
                   items:
                     type: object
       responses:
+        "400":
+          description: Missing workspaceId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: Messages added successfully
           content:
