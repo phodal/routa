@@ -7,7 +7,7 @@
 
 import type { LanguageModel } from "ai";
 
-export type WorkspaceAgentProvider = "anthropic" | "openai" | "zhipu" | "minimax" | "atlascloud";
+export type WorkspaceAgentProvider = "anthropic" | "openai" | "zhipu" | "minimax" | "atlascloud" | "standardcompute";
 
 export interface WorkspaceAgentConfig {
   /** Model identifier, e.g. "claude-sonnet-4-20250514" or "gpt-4o" */
@@ -41,7 +41,7 @@ const DEFAULTS: WorkspaceAgentConfig = {
  * Resolve configuration from environment variables, merged with explicit overrides.
  *
  * Environment variables:
- *   WORKSPACE_AGENT_PROVIDER  — "anthropic" | "openai" | "zhipu" | "minimax" | "atlascloud"
+ *   WORKSPACE_AGENT_PROVIDER  — "anthropic" | "openai" | "zhipu" | "minimax" | "atlascloud" | "standardcompute"
  *   WORKSPACE_AGENT_MODEL     — model identifier
  *   WORKSPACE_AGENT_MAX_STEPS — max agentic loop steps
  */
@@ -106,6 +106,19 @@ export async function createLanguageModel(config: WorkspaceAgentConfig): Promise
           process.env.ATLASCLOUD_API_BASE ??
           process.env.ATLAS_CLOUD_API_BASE ??
           "https://api.atlascloud.ai/v1",
+      });
+      return provider(config.modelId);
+    }
+    case "standardcompute": {
+      // Standard Compute exposes an OpenAI-compatible API. The "StandardCompute" model id
+      // routes each request across the user's enabled models; pinned ids are listed at /v1/models.
+      const { createOpenAI } = await import("@ai-sdk/openai");
+      const provider = createOpenAI({
+        apiKey: config.apiKey ?? process.env.STANDARDCOMPUTE_API_KEY,
+        baseURL:
+          config.baseUrl ??
+          process.env.STANDARDCOMPUTE_API_BASE ??
+          "https://api.stdcmpt.com/v1",
       });
       return provider(config.modelId);
     }
