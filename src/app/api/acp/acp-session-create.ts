@@ -79,6 +79,7 @@ function inferWorkspaceAgentProvider(baseUrl?: string): WorkspaceAgentProvider |
   const normalized = baseUrl?.trim().toLowerCase();
   if (!normalized) return undefined;
   if (normalized.includes("api.atlascloud.ai")) return "atlascloud";
+  if (normalized.includes("api.stdcmpt.com")) return "standardcompute";
   if (normalized.includes("api.openai.com")) return "openai";
   if (normalized.includes("zhipu") || normalized.includes("bigmodel")) return "zhipu";
   if (normalized.includes("minimax")) return "minimax";

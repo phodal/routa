@@ -165,6 +165,36 @@ describe("resolveWorkspaceAgentConfig", () => {
     }
   });
 
+  it("accepts Standard Compute as a workspace agent provider", () => {
+    const config = resolveWorkspaceAgentConfig({
+      provider: "standardcompute",
+      modelId: "StandardCompute",
+      baseUrl: "https://api.stdcmpt.com/v1",
+      apiKey: "standardcompute-test-key",
+    });
+    expect(config.provider).toBe("standardcompute");
+    expect(config.modelId).toBe("StandardCompute");
+    expect(config.baseUrl).toBe("https://api.stdcmpt.com/v1");
+    expect(config.apiKey).toBe("standardcompute-test-key");
+  });
+
+  it("reads Standard Compute provider from environment", () => {
+    const originalProvider = process.env.WORKSPACE_AGENT_PROVIDER;
+    const originalModel = process.env.WORKSPACE_AGENT_MODEL;
+    try {
+      process.env.WORKSPACE_AGENT_PROVIDER = "standardcompute";
+      process.env.WORKSPACE_AGENT_MODEL = "deepseek/deepseek-v4-pro";
+      const config = resolveWorkspaceAgentConfig();
+      expect(config.provider).toBe("standardcompute");
+      expect(config.modelId).toBe("deepseek/deepseek-v4-pro");
+    } finally {
+      if (originalProvider === undefined) delete process.env.WORKSPACE_AGENT_PROVIDER;
+      else process.env.WORKSPACE_AGENT_PROVIDER = originalProvider;
+      if (originalModel === undefined) delete process.env.WORKSPACE_AGENT_MODEL;
+      else process.env.WORKSPACE_AGENT_MODEL = originalModel;
+    }
+  });
+
   it("reads minimax provider from environment", () => {
     const originalProvider = process.env.WORKSPACE_AGENT_PROVIDER;
     const originalModel = process.env.WORKSPACE_AGENT_MODEL;

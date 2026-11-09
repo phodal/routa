@@ -87,6 +87,10 @@ export class WorkspaceAgentAdapter {
       if (!this.config.apiKey && !process.env.ATLASCLOUD_API_KEY && !process.env.ATLAS_CLOUD_API_KEY) {
         throw new Error("Workspace agent (atlascloud) requires ATLASCLOUD_API_KEY");
       }
+    } else if (this.config.provider === "standardcompute") {
+      if (!this.config.apiKey && !process.env.STANDARDCOMPUTE_API_KEY) {
+        throw new Error("Workspace agent (standardcompute) requires STANDARDCOMPUTE_API_KEY");
+      }
     } else if (this.config.provider === "minimax") {
       if (!this.config.apiKey && !process.env.MINIMAX_API_KEY) {
         throw new Error("Workspace agent (minimax) requires MINIMAX_API_KEY");
