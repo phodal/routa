@@ -67,6 +67,15 @@ export const API_BASED_PROVIDERS: ApiBasedProvider[] = [
     status: 'requires_config',
   },
   {
+    id: 'uberllm-api',
+    name: 'UberLLM API',
+    description: 'UberLLM OpenAI-compatible models via API',
+    apiEndpoint: 'https://api.uberllm.dev/v1',
+    requiresApiKey: true,
+    envKeyName: 'UBERLLM_API_KEY',
+    status: 'requires_config',
+  },
+  {
     id: 'anthropic-api',
     name: 'Anthropic API',
     description: 'Claude models via API',
@@ -156,6 +165,7 @@ This is because:
 To configure providers, add environment variables:
 - OPENCODE_SERVER_URL=http://your-server:4096 (for OpenCode SDK)
 - ATLASCLOUD_API_KEY=your-atlascloud-api-key (for Atlas Cloud OpenAI-compatible models)
+- UBERLLM_API_KEY=your-uberllm-api-key (for UberLLM OpenAI-compatible models)
 - OPENAI_API_KEY=sk-...
 - ANTHROPIC_API_KEY=sk-ant-...
 - GOOGLE_API_KEY=...
