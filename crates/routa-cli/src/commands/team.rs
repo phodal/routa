@@ -91,7 +91,7 @@ pub async fn run(
         "║  Members    : {:<43} ║",
         format!("{} specialists available", team_count)
     );
-    println!("║  Workspace  : {:<43} ║", &workspace_id);
+    println!("║  Workspace  : {:<43} ║", workspace_id);
     println!("║  Provider   : {provider:<43} ║");
     println!("║  CWD        : {:<43} ║", truncate_path(&cwd, 43));
     println!("╚══════════════════════════════════════════════════════════╝");

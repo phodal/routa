@@ -36,6 +36,7 @@ const TRAY_QUIT_ID: &str = "tray:quit";
 const MACOS_TRAY_TEMPLATE_ICON: tauri::image::Image<'_> =
     tauri::include_image!("./icons/tray-template-macos.png");
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn use_template_icon_for_tray() -> bool {
     cfg!(target_os = "macos")
 }
@@ -321,12 +322,14 @@ fn absolute_route_for_menu_id(id: &str) -> Option<&'static str> {
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn handle_tray_icon_event(app: &AppHandle, event: &TrayIconEvent) {
     if should_open_main_window_for_tray_event(event) {
         show_main_window(app);
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn should_open_main_window_for_tray_event(event: &TrayIconEvent) -> bool {
     matches!(
         event,

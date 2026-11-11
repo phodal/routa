@@ -116,7 +116,7 @@ pub async fn run(
     println!("╔══════════════════════════════════════════════════════════╗");
     println!("║  Routa CLI — Quick Prompt                               ║");
     println!("╠══════════════════════════════════════════════════════════╣");
-    println!("║  Workspace : {:<42} ║", &workspace_id);
+    println!("║  Workspace : {:<42} ║", workspace_id);
     println!("║  Agent     : {} (DEVELOPER) {:<23} ║", &agent_id[..8], "");
     println!("║  Provider  : {provider:<42} ║");
     println!("║  CWD       : {:<42} ║", truncate_path(&cwd, 42));

@@ -645,7 +645,7 @@ async fn execute_specialist_run(
         println!("╠══════════════════════════════════════════════════════════╣");
         println!("║  Specialist: {:<42} ║", selected_specialist.id);
         println!("║  Role      : {agent_role:<42} ║");
-        println!("║  Workspace : {:<42} ║", &workspace_id);
+        println!("║  Workspace : {:<42} ║", workspace_id);
         println!("║  Provider  : {effective_provider:<42} ║");
         println!(
             "║  CWD       : {:<42} ║",
