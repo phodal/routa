@@ -29,6 +29,7 @@ pub mod registry_types;
 pub mod runtime_manager;
 pub mod terminal_manager;
 pub mod warmup;
+pub mod workspace_agent;
 
 pub use binary_manager::AcpBinaryManager;
 pub use claude_code_process::{ClaudeCodeConfig, ClaudeCodeProcess};
@@ -40,7 +41,6 @@ pub use runtime_manager::{current_platform, AcpRuntimeManager, RuntimeInfo, Runt
 pub use warmup::{AcpWarmupService, WarmupState, WarmupStatus};
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -51,21 +51,6 @@ use process::AcpProcess;
 
 #[cfg(windows)]
 pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-fn validate_session_cwd(cwd: &str) -> Result<(), String> {
-    let path = Path::new(cwd);
-    if !path.exists() {
-        return Err(format!(
-            "Invalid session cwd '{cwd}': directory does not exist"
-        ));
-    }
-    if !path.is_dir() {
-        return Err(format!(
-            "Invalid session cwd '{cwd}': path is not a directory"
-        ));
-    }
-    Ok(())
-}
 
 // ─── Session Record ─────────────────────────────────────────────────────
 
@@ -105,6 +90,8 @@ pub struct SessionLaunchOptions {
     pub initialize_timeout_ms: Option<u64>,
     pub provider_args: Option<Vec<String>>,
     pub acp_mcp_servers: Option<Vec<serde_json::Value>>,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
 }
 
 // ─── Managed Process ────────────────────────────────────────────────────
@@ -116,6 +103,7 @@ enum AgentProcessType {
     Acp(Arc<AcpProcess>),
     /// Claude Code stream-json protocol
     Claude(Arc<ClaudeCodeProcess>),
+    Workspace,
 }
 
 impl AgentProcessType {
@@ -124,6 +112,7 @@ impl AgentProcessType {
         match self {
             AgentProcessType::Acp(process) => process.kill().await,
             AgentProcessType::Claude(process) => process.kill().await,
+            AgentProcessType::Workspace => {}
         }
     }
 }
@@ -170,19 +159,6 @@ impl Default for AcpManager {
 }
 
 impl AcpManager {
-    pub fn rewrite_notification_session_id(
-        session_id: &str,
-        mut notification: serde_json::Value,
-    ) -> serde_json::Value {
-        if let Some(object) = notification.as_object_mut() {
-            object.insert(
-                "sessionId".to_string(),
-                serde_json::Value::String(session_id.to_string()),
-            );
-        }
-        notification
-    }
-
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -369,7 +345,7 @@ impl AcpManager {
         provider_session_id: Option<String>,
         options: SessionLaunchOptions,
     ) -> Result<(String, String), String> {
-        validate_session_cwd(&cwd)?;
+        workspace_agent::validate_session_cwd(&cwd)?;
         let provider_name = provider.as_deref().unwrap_or("opencode");
         let acp_mcp_servers = if matches!(provider_name, "codex" | "codex-acp") {
             options.acp_mcp_servers.clone().unwrap_or_else(|| {
@@ -633,7 +609,7 @@ impl AcpManager {
         args: Vec<String>,
         options: SessionLaunchOptions,
     ) -> Result<(String, String), String> {
-        validate_session_cwd(&cwd)?;
+        workspace_agent::validate_session_cwd(&cwd)?;
         let (ntx, _) = broadcast::channel::<serde_json::Value>(256);
 
         let process = AcpProcess::spawn(
@@ -694,7 +670,7 @@ impl AcpManager {
         provider_session_id: Option<String>,
         options: SessionLaunchOptions,
     ) -> Result<(String, String), String> {
-        validate_session_cwd(&cwd)?;
+        workspace_agent::validate_session_cwd(&cwd)?;
         let (ntx, _) = broadcast::channel::<serde_json::Value>(256);
 
         let process = AcpProcess::spawn(
@@ -761,8 +737,23 @@ impl AcpManager {
         mcp_profile: Option<String>,
         options: SessionLaunchOptions,
     ) -> Result<(String, String), String> {
-        validate_session_cwd(&cwd)?;
+        workspace_agent::validate_session_cwd(&cwd)?;
         let provider_name = provider.as_deref().unwrap_or("opencode");
+        if let Some(connected) = self
+            .connect_hosted_workspace_session(
+                &session_id,
+                &cwd,
+                &workspace_id,
+                provider_name,
+                role.clone(),
+                model.clone(),
+                parent_session_id.clone(),
+                &options,
+            )
+            .await?
+        {
+            return Ok(connected);
+        }
         let acp_mcp_servers = if matches!(provider_name, "codex" | "codex-acp") {
             options.acp_mcp_servers.clone().unwrap_or_else(|| {
                 mcp_setup::build_acp_http_mcp_servers(
@@ -936,6 +927,7 @@ impl AcpManager {
         let is_alive = match &process {
             AgentProcessType::Acp(p) => p.is_alive(),
             AgentProcessType::Claude(p) => p.is_alive(),
+            AgentProcessType::Workspace => true,
         };
 
         if !is_alive {
@@ -972,6 +964,9 @@ impl AcpManager {
                 let stop_reason = p.prompt(text).await?;
                 Ok(serde_json::json!({ "stopReason": stop_reason }))
             }
+            AgentProcessType::Workspace => {
+                Err(workspace_agent::DESKTOP_HOSTED_PROMPT_UNAVAILABLE.into())
+            }
         };
 
         match &result {
@@ -1000,6 +995,7 @@ impl AcpManager {
             match &managed.process {
                 AgentProcessType::Acp(p) => p.cancel(&managed.acp_session_id).await,
                 AgentProcessType::Claude(p) => p.cancel().await,
+                AgentProcessType::Workspace => {}
             }
         }
     }
@@ -1019,6 +1015,7 @@ impl AcpManager {
             match &managed.process {
                 AgentProcessType::Acp(p) => p.kill().await,
                 AgentProcessType::Claude(p) => p.kill().await,
+                AgentProcessType::Workspace => {}
             }
 
             if let Some(cleanup) = managed.mcp_cleanup.as_ref() {
@@ -1050,6 +1047,7 @@ impl AcpManager {
             .map(|m| match &m.process {
                 AgentProcessType::Acp(p) => p.is_alive(),
                 AgentProcessType::Claude(p) => p.is_alive(),
+                AgentProcessType::Workspace => true,
             })
             .unwrap_or(false)
     }
@@ -1111,7 +1109,7 @@ impl AcpManager {
                 });
                 Ok(())
             }
-            AgentProcessType::Acp(_) => {
+            AgentProcessType::Acp(_) | AgentProcessType::Workspace => {
                 Err("prompt_claude_async is only for Claude sessions".to_string())
             }
         }
@@ -1383,8 +1381,8 @@ fn truncate_content(text: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        get_preset_by_id_with_registry, get_presets, truncate_content, validate_session_cwd,
-        AcpManager, AcpSessionRecord,
+        get_preset_by_id_with_registry, get_presets, truncate_content,
+        workspace_agent::validate_session_cwd, AcpManager, AcpSessionRecord,
     };
     use std::collections::HashMap;
     use std::fs;

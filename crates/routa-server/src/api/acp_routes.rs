@@ -23,6 +23,8 @@ use routa_core::orchestration::{OrchestratorConfig, RoutaOrchestrator, Specialis
 use routa_core::storage::{LocalSessionProvider, SessionRecord};
 use routa_core::store::acp_session_store::{AcpSessionRow, CreateAcpSessionParams};
 
+mod acp_launch_options;
+
 pub fn router() -> Router<AppState> {
     Router::new().route("/", get(acp_sse).post(acp_rpc))
 }
@@ -508,18 +510,11 @@ async fn acp_rpc(
                 parent_session_id
             );
 
-            let launch_options = SessionLaunchOptions {
-                specialist_id: specialist_id.clone(),
-                specialist_system_prompt: params
-                    .get("systemPrompt")
-                    .and_then(|v| v.as_str())
-                    .map(str::trim)
-                    .filter(|prompt| !prompt.is_empty())
-                    .map(str::to_string)
-                    .or_else(|| specialist.as_ref().and_then(build_specialist_system_prompt)),
-                allowed_native_tools: derive_allowed_native_tools(specialist_id.as_deref()),
-                ..SessionLaunchOptions::default()
-            };
+            let launch_options = acp_launch_options::launch_options_from_params(
+                &params,
+                specialist.as_ref(),
+                specialist_id.clone(),
+            );
             let persisted_custom_provider_launch = custom_provider_launch.clone();
             let effective_provider = provider.clone().or_else(|| {
                 custom_provider_launch
@@ -814,18 +809,11 @@ async fn acp_rpc(
                         .as_ref()
                         .map(|launch| launch.command.clone())
                 });
-                let launch_options = SessionLaunchOptions {
-                    specialist_id: specialist_id.clone(),
-                    specialist_system_prompt: params
-                        .get("systemPrompt")
-                        .and_then(|v| v.as_str())
-                        .map(str::trim)
-                        .filter(|prompt| !prompt.is_empty())
-                        .map(str::to_string)
-                        .or_else(|| specialist.as_ref().and_then(build_specialist_system_prompt)),
-                    allowed_native_tools: derive_allowed_native_tools(specialist_id.as_deref()),
-                    ..SessionLaunchOptions::default()
-                };
+                let launch_options = acp_launch_options::launch_options_from_params(
+                    &params,
+                    specialist.as_ref(),
+                    specialist_id.clone(),
+                );
 
                 // Create the session
                 let create_result = if let Some(custom) = custom_provider_launch.clone() {
@@ -1961,6 +1949,10 @@ async fn persist_session_to_jsonl(
         tracing::warn!("[ACP Route] Failed to persist session to JSONL: {}", e);
     }
 }
+
+#[cfg(test)]
+#[path = "acp_routes_hosted_workspace_tests.rs"]
+mod acp_routes_hosted_workspace_tests;
 
 #[cfg(test)]
 mod tests {
