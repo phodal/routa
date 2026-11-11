@@ -7,7 +7,8 @@ import { isOpencodeServerConfigured } from "@/core/acp/opencode-sdk-adapter";
 import { getDockerDetector, DEFAULT_DOCKER_AGENT_IMAGE } from "@/core/acp/docker";
 import { isClaudeCodeSdkConfigured } from "@/core/acp/claude-code-sdk-adapter";
 import type { AgentInstanceConfig } from "@/core/acp/agent-instance-factory";
-import type { WorkspaceAgentConfig, WorkspaceAgentProvider } from "@/core/acp/workspace-agent/workspace-agent-config";
+import type { WorkspaceAgentConfig } from "@/core/acp/workspace-agent/workspace-agent-config";
+import { inferWorkspaceAgentProvider } from "@/core/acp/workspace-agent/provider-endpoint";
 import { initRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
 import { getRoutaSystem } from "@/core/routa-system";
 import { AgentRole } from "@/core/models/agent";
@@ -73,17 +74,6 @@ export function cleanupIdempotencyCache() {
 function isWorkspaceProvider(provider: string): boolean {
   const normalized = provider.toLowerCase();
   return normalized === "workspace" || normalized === "workspace-agent" || normalized === "routa-native";
-}
-
-function inferWorkspaceAgentProvider(baseUrl?: string): WorkspaceAgentProvider | undefined {
-  const normalized = baseUrl?.trim().toLowerCase();
-  if (!normalized) return undefined;
-  if (normalized.includes("api.atlascloud.ai")) return "atlascloud";
-  if (normalized.includes("api.openai.com")) return "openai";
-  if (normalized.includes("zhipu") || normalized.includes("bigmodel")) return "zhipu";
-  if (normalized.includes("minimax")) return "minimax";
-  if (normalized.includes("anthropic")) return "anthropic";
-  return undefined;
 }
 
 function buildWorkspaceAgentConfig(

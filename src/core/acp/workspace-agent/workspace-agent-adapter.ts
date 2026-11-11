@@ -18,8 +18,11 @@ import { createCodingTools, createAgentManagementTools } from "./workspace-agent
 import {
   resolveWorkspaceAgentConfig,
   createLanguageModel,
+  assertHostedOpenAiCredential,
+  UBERLLM_EXPLICIT_MODEL_ERROR,
   type WorkspaceAgentConfig,
 } from "./workspace-agent-config";
+import { isTrustedUberllmAnthropicBase, nonEmpty } from "./provider-endpoint";
 import { LifecycleNotifier } from "../lifecycle-notifier";
 import { AgentEventType } from "@/core/events/event-bus";
 
@@ -76,16 +79,24 @@ export class WorkspaceAgentAdapter {
 
   async connect(): Promise<void> {
     if (this.config.provider === "anthropic") {
-      if (!this.config.apiKey && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
+      const requestedBase = this.config.baseUrl ?? process.env.ANTHROPIC_BASE_URL;
+      const uberllmFallback = Boolean(nonEmpty(process.env.UBERLLM_API_KEY))
+        && isTrustedUberllmAnthropicBase(requestedBase);
+      if (!this.config.apiKey && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN && !uberllmFallback) {
         throw new Error("Workspace agent (anthropic) requires ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN");
       }
     } else if (this.config.provider === "openai") {
       if (!this.config.apiKey && !process.env.OPENAI_API_KEY) {
         throw new Error("Workspace agent (openai) requires OPENAI_API_KEY");
       }
-    } else if (this.config.provider === "atlascloud") {
-      if (!this.config.apiKey && !process.env.ATLASCLOUD_API_KEY && !process.env.ATLAS_CLOUD_API_KEY) {
-        throw new Error("Workspace agent (atlascloud) requires ATLASCLOUD_API_KEY");
+    } else if (
+      this.config.provider === "atlascloud"
+      || this.config.provider === "standardcompute"
+      || this.config.provider === "uberllm"
+    ) {
+      assertHostedOpenAiCredential(this.config);
+      if (this.config.provider === "uberllm" && !nonEmpty(this.config.modelId)) {
+        throw new Error(UBERLLM_EXPLICIT_MODEL_ERROR);
       }
     } else if (this.config.provider === "minimax") {
       if (!this.config.apiKey && !process.env.MINIMAX_API_KEY) {
