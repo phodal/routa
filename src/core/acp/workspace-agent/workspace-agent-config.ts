@@ -61,6 +61,40 @@ export function resolveWorkspaceAgentConfig(
   };
 }
 
+export const UBERLLM_DEFAULT_BASE_URL = "https://api.uberllm.dev/v1";
+
+/** True only for an https URL whose host is exactly api.uberllm.dev. */
+export function isUberLLMBaseUrl(baseUrl?: string): boolean {
+  if (!baseUrl) return false;
+  try {
+    const url = new URL(baseUrl.trim());
+    return url.protocol === "https:" && url.hostname === "api.uberllm.dev";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The server's UBERLLM_API_KEY is only sent to api.uberllm.dev or to the operator's
+ * UBERLLM_API_BASE. A per-session base URL anywhere else must bring its own apiKey.
+ */
+export function resolveUberLLMCredentials(config: Pick<WorkspaceAgentConfig, "apiKey" | "baseUrl">): {
+  apiKey: string;
+  baseURL: string;
+} {
+  const operatorBase = process.env.UBERLLM_API_BASE;
+  const baseURL = config.baseUrl ?? operatorBase ?? UBERLLM_DEFAULT_BASE_URL;
+  if (config.apiKey) return { apiKey: config.apiKey, baseURL };
+  const trusted = isUberLLMBaseUrl(baseURL) || (!!operatorBase && baseURL === operatorBase);
+  if (!trusted) {
+    throw new Error("Workspace agent (uberllm) needs an apiKey for a base URL other than api.uberllm.dev");
+  }
+  if (!process.env.UBERLLM_API_KEY) {
+    throw new Error("Workspace agent (uberllm) requires UBERLLM_API_KEY");
+  }
+  return { apiKey: process.env.UBERLLM_API_KEY, baseURL };
+}
+
 export function normalizeAnthropicBaseUrl(baseUrl: string): string {
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
   return normalizedBaseUrl.endsWith("/v1") ? normalizedBaseUrl : `${normalizedBaseUrl}/v1`;
@@ -111,10 +145,7 @@ export async function createLanguageModel(config: WorkspaceAgentConfig): Promise
     }
     case "uberllm": {
       const { createOpenAI } = await import("@ai-sdk/openai");
-      const provider = createOpenAI({
-        apiKey: config.apiKey ?? process.env.UBERLLM_API_KEY,
-        baseURL: config.baseUrl ?? process.env.UBERLLM_API_BASE ?? "https://api.uberllm.dev/v1",
-      });
+      const provider = createOpenAI(resolveUberLLMCredentials(config));
       return provider(config.modelId);
     }
     case "zhipu": {

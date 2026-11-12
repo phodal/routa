@@ -7,7 +7,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { WorkspaceAgentStateMachine } from "../workspace-agent/workspace-agent-state";
 import {
+  isUberLLMBaseUrl,
   normalizeAnthropicBaseUrl,
+  resolveUberLLMCredentials,
   resolveWorkspaceAgentConfig,
 } from "../workspace-agent/workspace-agent-config";
 import { WorkspaceAgentAdapter } from "../workspace-agent/workspace-agent-adapter";
@@ -176,6 +178,39 @@ describe("resolveWorkspaceAgentConfig", () => {
     expect(config.modelId).toBe("qwen/qwen3.5-flash");
     expect(config.baseUrl).toBe("https://api.uberllm.dev/v1");
     expect(config.apiKey).toBe("uberllm-test-key");
+  });
+
+  it("matches the UberLLM host exactly, not as a substring", () => {
+    expect(isUberLLMBaseUrl("https://api.uberllm.dev/v1")).toBe(true);
+    expect(isUberLLMBaseUrl("https://attacker.example/api.uberllm.dev/v1")).toBe(false);
+    expect(isUberLLMBaseUrl("https://api.uberllm.dev.attacker.example/v1")).toBe(false);
+    expect(isUberLLMBaseUrl("http://api.uberllm.dev/v1")).toBe(false);
+  });
+
+  it("never sends the server UberLLM key to a per-session base URL", () => {
+    const originalApiKey = process.env.UBERLLM_API_KEY;
+    const originalBase = process.env.UBERLLM_API_BASE;
+    try {
+      process.env.UBERLLM_API_KEY = "server-key";
+      delete process.env.UBERLLM_API_BASE;
+      expect(resolveUberLLMCredentials({})).toEqual({
+        apiKey: "server-key",
+        baseURL: "https://api.uberllm.dev/v1",
+      });
+      expect(() => resolveUberLLMCredentials({ baseUrl: "https://attacker.example/api.uberllm.dev/v1" })).toThrow(
+        "needs an apiKey",
+      );
+      expect(
+        resolveUberLLMCredentials({ baseUrl: "https://proxy.example/v1", apiKey: "session-key" }),
+      ).toEqual({ apiKey: "session-key", baseURL: "https://proxy.example/v1" });
+      process.env.UBERLLM_API_BASE = "https://proxy.example/v1";
+      expect(resolveUberLLMCredentials({}).apiKey).toBe("server-key");
+    } finally {
+      if (originalApiKey === undefined) delete process.env.UBERLLM_API_KEY;
+      else process.env.UBERLLM_API_KEY = originalApiKey;
+      if (originalBase === undefined) delete process.env.UBERLLM_API_BASE;
+      else process.env.UBERLLM_API_BASE = originalBase;
+    }
   });
 
   it("reads UberLLM provider from environment", () => {
