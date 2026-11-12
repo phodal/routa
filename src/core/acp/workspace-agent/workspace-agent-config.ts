@@ -7,7 +7,7 @@
 
 import type { LanguageModel } from "ai";
 
-export type WorkspaceAgentProvider = "anthropic" | "openai" | "zhipu" | "minimax" | "atlascloud";
+export type WorkspaceAgentProvider = "anthropic" | "openai" | "zhipu" | "minimax" | "atlascloud" | "uberllm";
 
 export interface WorkspaceAgentConfig {
   /** Model identifier, e.g. "claude-sonnet-4-20250514" or "gpt-4o" */
@@ -41,7 +41,7 @@ const DEFAULTS: WorkspaceAgentConfig = {
  * Resolve configuration from environment variables, merged with explicit overrides.
  *
  * Environment variables:
- *   WORKSPACE_AGENT_PROVIDER  — "anthropic" | "openai" | "zhipu" | "minimax" | "atlascloud"
+ *   WORKSPACE_AGENT_PROVIDER  — "anthropic" | "openai" | "zhipu" | "minimax" | "atlascloud" | "uberllm"
  *   WORKSPACE_AGENT_MODEL     — model identifier
  *   WORKSPACE_AGENT_MAX_STEPS — max agentic loop steps
  */
@@ -59,6 +59,40 @@ export function resolveWorkspaceAgentConfig(
     ...(envMaxSteps && { maxSteps: parseInt(envMaxSteps, 10) }),
     ...overrides,
   };
+}
+
+export const UBERLLM_DEFAULT_BASE_URL = "https://api.uberllm.dev/v1";
+
+/** True only for an https URL whose host is exactly api.uberllm.dev. */
+export function isUberLLMBaseUrl(baseUrl?: string): boolean {
+  if (!baseUrl) return false;
+  try {
+    const url = new URL(baseUrl.trim());
+    return url.protocol === "https:" && url.hostname === "api.uberllm.dev";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The server's UBERLLM_API_KEY is only sent to api.uberllm.dev or to the operator's
+ * UBERLLM_API_BASE. A per-session base URL anywhere else must bring its own apiKey.
+ */
+export function resolveUberLLMCredentials(config: Pick<WorkspaceAgentConfig, "apiKey" | "baseUrl">): {
+  apiKey: string;
+  baseURL: string;
+} {
+  const operatorBase = process.env.UBERLLM_API_BASE;
+  const baseURL = config.baseUrl ?? operatorBase ?? UBERLLM_DEFAULT_BASE_URL;
+  if (config.apiKey) return { apiKey: config.apiKey, baseURL };
+  const trusted = isUberLLMBaseUrl(baseURL) || (!!operatorBase && baseURL === operatorBase);
+  if (!trusted) {
+    throw new Error("Workspace agent (uberllm) needs an apiKey for a base URL other than api.uberllm.dev");
+  }
+  if (!process.env.UBERLLM_API_KEY) {
+    throw new Error("Workspace agent (uberllm) requires UBERLLM_API_KEY");
+  }
+  return { apiKey: process.env.UBERLLM_API_KEY, baseURL };
 }
 
 export function normalizeAnthropicBaseUrl(baseUrl: string): string {
@@ -107,6 +141,11 @@ export async function createLanguageModel(config: WorkspaceAgentConfig): Promise
           process.env.ATLAS_CLOUD_API_BASE ??
           "https://api.atlascloud.ai/v1",
       });
+      return provider(config.modelId);
+    }
+    case "uberllm": {
+      const { createOpenAI } = await import("@ai-sdk/openai");
+      const provider = createOpenAI(resolveUberLLMCredentials(config));
       return provider(config.modelId);
     }
     case "zhipu": {

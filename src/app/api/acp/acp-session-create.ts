@@ -8,6 +8,7 @@ import { getDockerDetector, DEFAULT_DOCKER_AGENT_IMAGE } from "@/core/acp/docker
 import { isClaudeCodeSdkConfigured } from "@/core/acp/claude-code-sdk-adapter";
 import type { AgentInstanceConfig } from "@/core/acp/agent-instance-factory";
 import type { WorkspaceAgentConfig, WorkspaceAgentProvider } from "@/core/acp/workspace-agent/workspace-agent-config";
+import { isUberLLMBaseUrl } from "@/core/acp/workspace-agent/workspace-agent-config";
 import { initRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
 import { getRoutaSystem } from "@/core/routa-system";
 import { AgentRole } from "@/core/models/agent";
@@ -79,6 +80,7 @@ function inferWorkspaceAgentProvider(baseUrl?: string): WorkspaceAgentProvider |
   const normalized = baseUrl?.trim().toLowerCase();
   if (!normalized) return undefined;
   if (normalized.includes("api.atlascloud.ai")) return "atlascloud";
+  if (isUberLLMBaseUrl(normalized)) return "uberllm";
   if (normalized.includes("api.openai.com")) return "openai";
   if (normalized.includes("zhipu") || normalized.includes("bigmodel")) return "zhipu";
   if (normalized.includes("minimax")) return "minimax";
